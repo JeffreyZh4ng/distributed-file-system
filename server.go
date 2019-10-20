@@ -24,6 +24,7 @@ type Membership struct {
 	List    []string
 }
 
+// Writes with some error checking
 func writeMembershipList(membership *Membership, hostName string) {
 	conn, err := net.Dial("udp", hostName+":"+PORT_NUM)
 	if err != nil {
@@ -69,6 +70,7 @@ func sendHeartbeats(membership *Membership, wg *sync.WaitGroup) {
 	wg.Done()
 }
 
+// Search that will find the index of the hostname in the list
 func findHostnameIndex(membership *Membership, hostName string) (int) {
 	for i := 0; i < len(membership.List); i++ {
 		if membership.List[i] == hostName {
@@ -79,6 +81,8 @@ func findHostnameIndex(membership *Membership, hostName string) (int) {
 	return len(membership.List)
 }
 
+// Loops through the membership and checks if any of the times on the nodes are past the
+// Allowed timeout. If the last time is 0 then the node has left the network
 func removeExitedNodes(membership *Membership) {
 	currTime := time.Now().UnixNano() / int64(time.Millisecond)
 	tempList := membership.List[:0]
@@ -102,6 +106,7 @@ func removeExitedNodes(membership *Membership) {
 	membership.List = tempList
 }
 
+// Goroutine that will send out heartbeats every half second.
 func heartbeatManager(membership *Membership) {
 	hostname, _ := os.Hostname()
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -114,6 +119,7 @@ func heartbeatManager(membership *Membership) {
 		go sendHeartbeats(membership, &wg)
 		wg.Wait()		
 
+		// If the current node has not left the network then update its time
 		if membership.Data[hostname] != 0 {
 			membership.Data[hostname] = time.Now().UnixNano() / int64(time.Millisecond)
 		}
@@ -121,6 +127,7 @@ func heartbeatManager(membership *Membership) {
 	}
 }
 
+// This function is called when the node recieves a UDP message
 func processNewMembershipList(buffer []byte, readLen int, membership *Membership) {
 	newMembership := Membership{}
 	err := json.Unmarshal(buffer[:readLen], &newMembership)
@@ -129,21 +136,28 @@ func processNewMembershipList(buffer []byte, readLen int, membership *Membership
 		return
 	}
 
-	// log.Infof("List\n %s", membership.Data)
+	// This will loop through the membership recieved by the UDP request and update the
+	// timestamps in the current node. 
 	for i := 0; i < len(newMembership.List); i++ {
 		nextHostname := newMembership.List[i]
+		
+		// If it finds a node that is not in its own list, add it.
 		if pingTime, contains := membership.Data[nextHostname]; !contains {
 			membership.Data[nextHostname] = newMembership.Data[nextHostname]
 			
 			membership.List = append(membership.List, nextHostname)
 			sort.Strings(membership.List)	
 
+		// If the current node just left the network or we get a UDP request that at node left
 		} else if membership.Data[nextHostname] == 0 || newMembership.Data[nextHostname] == 0 {
 			membership.Data[nextHostname] = 0
+
+		// If the stored ping time is less than the UDP request time, update the time
 		} else if pingTime < newMembership.Data[nextHostname] {	
 			membership.Data[nextHostname] = newMembership.Data[nextHostname]
 		
-			// If the hostname is not in the list and we recieved a newer time within the timout bounds, add it to the list	
+			// If the hostname is not in the list because it left or timedout and we recieved 
+			// a newer time, add it back to the list
 			currTime := time.Now().UnixNano() / int64(time.Millisecond)
 			if findHostnameIndex(membership, nextHostname) >= len(membership.List) && 
 			   currTime - newMembership.Data[nextHostname] < TIMEOUT_MS {
@@ -155,12 +169,14 @@ func processNewMembershipList(buffer []byte, readLen int, membership *Membership
 		}
 	}
 
-	// Update the time of the node who sent the list
+	// Update the time of the node who sent the list. We need to check if the node has not left
+	// because its possible that a goroutine might be finishing up even after the node left
 	if membership.Data[newMembership.SrcHost] != 0 {
 		membership.Data[newMembership.SrcHost] = time.Now().UnixNano() / int64(time.Millisecond)
 	}
 }
 
+// Goroutine that constantly listens for incoming UDP calls
 func readBuffer(ser *net.UDPConn, membership *Membership) {
 	buffer := make([]byte, 1024)
 	for {
@@ -177,29 +193,28 @@ func readBuffer(ser *net.UDPConn, membership *Membership) {
 	}
 }
 
-func main() {
-	// Open up a socket to listen for UDP requests
-	hostName, _ := os.Hostname()
-	addr, err := net.ResolveUDPAddr("udp", hostName+":"+PORT_NUM)
+// Helper method that will connect to nodes based on if it is the introducer or not
+func nodeSetup() (string, *Membership, *net.UDPConn) {
+	hostname, _ := os.Hostname()
+	addr, err := net.ResolveUDPAddr("udp", hostname+":"+PORT_NUM)
 	if err != nil {
 		log.Fatal("Could not resolve hostname!: %s", err)
 	}
 	ser, err := net.ListenUDP("udp", addr)
 	if err != nil {
 		log.Fatal("Server could not set up UDP listener %s", err)
-		return
 	}
-	log.Infof("Connected to %s!", hostName)
+	log.Infof("Connected to %s!", hostname)
 
 	// Initialize struct to include itself in its membership list
 	membership := &Membership{
-		SrcHost: hostName,
-		Data:    map[string]int64{hostName: time.Now().UnixNano() / int64(time.Millisecond)},
-		List:    []string{hostName},
+		SrcHost: hostname,
+		Data:    map[string]int64{hostname: time.Now().UnixNano() / int64(time.Millisecond)},
+		List:    []string{hostname},
 	}
 
 	// Add introducer code here. If the node is not the base node, send a heartbeat to the 0th node
-	if hostName != INTRODUCER_NODE {
+	if hostname != INTRODUCER_NODE {
 		log.Info("Writing to the introducer!")
 		writeMembershipList(membership, INTRODUCER_NODE)
 	} else {
@@ -215,6 +230,12 @@ func main() {
 		}
 	}
 
+	return hostname, membership, ser
+}
+
+func main() {
+	hostname, membership, ser := nodeSetup()
+
 	// Start a goroutine to handle sending out heartbeats
 	go heartbeatManager(membership)
 	go readBuffer(ser, membership)
@@ -223,7 +244,6 @@ func main() {
 		reader := bufio.NewReader(os.Stdin)
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSuffix(input, "\n")
-		log.Infof("User command: %s", input)
 
 		switch input {
 		case "id":
@@ -231,8 +251,8 @@ func main() {
 		case "list":
 			log.Infof("Current list\n: %s", membership.List)
 		case "leave":
-			log.Infof("Node %s is leaving the network!", hostName)
-			membership.Data[hostName] = 0
+			log.Infof("Node %s is leaving the network!", hostname)
+			membership.Data[hostname] = 0
 			time.Sleep(3 * time.Second)
 			os.Exit(0)
 		default:
