@@ -22,6 +22,13 @@ type Membership struct {
 	SrcHost string
 	Data    map[string]int64
 	List    []string
+	Store   Directory
+}
+
+// Every heartbeat will also contain a list of all files in the system
+type Directory struct {
+	LastUpdate int64
+	Storage map[string][]string
 }
 
 // Writes with some error checking
@@ -109,7 +116,7 @@ func removeExitedNodes(membership *Membership) {
 // Goroutine that will send out heartbeats every half second.
 func heartbeatManager(membership *Membership) {
 	hostname, _ := os.Hostname()
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(1000 * time.Millisecond)
 	var wg sync.WaitGroup
 
 	for {
