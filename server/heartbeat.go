@@ -178,7 +178,7 @@ func processNewMembershipList(buffer []byte, readLen int, membership *Membership
 
 			// If the current node left the network or we get a UDP request that indicates the node
 			// left the network then set the time in the data to 0.
-		} else if membership.Data[nextHostname] == 0 || newMembership.Data[nextHostname] == 0 {
+		} else if newMembership.Data[nextHostname] == 0 {
 			membership.Data[nextHostname] = 0
 
 			// If the stored ping time is less than the UDP request time, update the time
