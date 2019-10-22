@@ -125,11 +125,16 @@ func writeMembershipList(membership *Membership, hostName string) {
 func removeExitedNodes(membership *Membership) {
 	currTime := time.Now().UnixNano() / int64(time.Millisecond)
 	tempList := membership.List[:0]
+	rootName, _ := os.Hostname()
 
 	for _, hostName := range membership.List {
 		lastPing := membership.Data[hostName]
 		if lastPing == 0 {
-			tempList = append(tempList, hostName)
+			if hostName != rootName {
+				log.Infof("Node %s left the network!", hostName)
+			} else {
+				tempList = append(tempList, hostName)
+			}
 		} else if !(currTime-lastPing > TIMEOUT_MS) {
 			tempList = append(tempList, hostName)
 		} else {
