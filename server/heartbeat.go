@@ -23,39 +23,9 @@ type Membership struct {
 	Store   *Directory
 }
 
-// Every heartbeat will also contain a list of all files in the system
-type Directory struct {
-	LastUpdate int64
-	Storage    map[string][]string
-}
-
-// Helper method that will connect to nodes based on if it is the introducer or not
-func NodeSetup() (string, *Membership, *net.UDPConn) {
+func ServerJoin(membership *Membership) {
+	// If the node is not the introducer node, send a heartbeat to the 0th node
 	hostname, _ := os.Hostname()
-	addr, err := net.ResolveUDPAddr("udp", hostname+":"+PORT_NUM)
-	if err != nil {
-		log.Fatal("Could not resolve hostname!: %s", err)
-	}
-	ser, err := net.ListenUDP("udp", addr)
-	if err != nil {
-		log.Fatal("Server could not set up UDP listener %s", err)
-	}
-	log.Infof("Connected to %s!", hostname)
-
-	// Initialize struct to include itself in its membership list
-	fileSystem := &Directory{
-		LastUpdate: time.Now().UnixNano() / int64(time.Millisecond),
-		Storage: map[string][]string{},
-	}
-
-	membership := &Membership{
-		SrcHost: hostname,
-		Data:    map[string]int64{hostname: time.Now().UnixNano() / int64(time.Millisecond)},
-		List:    []string{hostname},
-		Store:   fileSystem,
-	}
-
-	// Add introducer code here. If the node is not the base node, send a heartbeat to the 0th node
 	if hostname != INTRODUCER_NODE {
 		log.Info("Writing to the introducer!")
 		writeMembershipList(membership, INTRODUCER_NODE)
@@ -71,8 +41,6 @@ func NodeSetup() (string, *Membership, *net.UDPConn) {
 			writeMembershipList(membership, connectName)
 		}
 	}
-
-	return hostname, membership, ser
 }
 
 // Goroutine that will send out heartbeats every half second.
