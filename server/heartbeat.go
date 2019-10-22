@@ -44,7 +44,7 @@ func ServerJoin(membership *Membership) {
 }
 
 // Goroutine that will send out heartbeats every half second.
-func HeartbeatManager(membership *Membership) {
+func HeartbeatManager(membership *Membership, leaveSignal chan int) {
 	hostname, _ := os.Hostname()
 	ticker := time.NewTicker(1000 * time.Millisecond)
 	var wg sync.WaitGroup
@@ -56,10 +56,14 @@ func HeartbeatManager(membership *Membership) {
 		go sendHeartbeats(membership, &wg)
 		wg.Wait()
 
-		// If the current node has not left the network then update its time
-		if membership.Data[hostname] != 0 {
-			membership.Data[hostname] = time.Now().UnixNano() / int64(time.Millisecond)
+		// If we get a leave signal from the channel, leave 
+		select {
+		case <-leaveSignal:
+			break
 		}
+
+		// If the current node has not left the network then update its time
+		membership.Data[hostname] = time.Now().UnixNano() / int64(time.Millisecond)
 		removeExitedNodes(membership)
 	}
 }
@@ -118,16 +122,11 @@ func writeMembershipList(membership *Membership, hostName string) {
 func removeExitedNodes(membership *Membership) {
 	currTime := time.Now().UnixNano() / int64(time.Millisecond)
 	tempList := membership.List[:0]
-	rootName, _ := os.Hostname()
 
 	for _, hostName := range membership.List {
 		lastPing := membership.Data[hostName]
 		if lastPing == 0 {
-			if hostName != rootName {
-				log.Infof("Node %s left the network!", hostName)
-			} else {
-				tempList = append(tempList, hostName)
-			}
+			tempList = append(tempList, hostName)
 		} else if !(currTime-lastPing > TIMEOUT_MS) {
 			tempList = append(tempList, hostName)
 		} else {
