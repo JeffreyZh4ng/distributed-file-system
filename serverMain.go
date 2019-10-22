@@ -45,10 +45,9 @@ func serverSetup() (*server.Membership, *net.UDPConn) {
 func main() {
 	hostname, _ := os.Hostname()
 	membership, ser := serverSetup()
-	leaveSignal := make(chan int, 1)
 
 	// Start a goroutine to handle sending out heartbeats
-	go server.HeartbeatManager(membership, leaveSignal)
+	go server.HeartbeatManager(membership)
 	go server.ListenForUDP(ser, membership)
 	go server.FileSystemManager(membership)
 
@@ -71,7 +70,6 @@ func main() {
 		case "leave":
 			log.Infof("Node %s is leaving the network!", hostname)
 			membership.Data[hostname] = 0
-			leaveSignal <- 0
 			time.Sleep(2 * time.Second)
 			os.Exit(0)
 		default:

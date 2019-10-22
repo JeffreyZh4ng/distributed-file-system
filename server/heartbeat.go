@@ -44,7 +44,7 @@ func ServerJoin(membership *Membership) {
 }
 
 // Goroutine that will send out heartbeats every half second.
-func HeartbeatManager(membership *Membership, leaveSignal chan int) {
+func HeartbeatManager(membership *Membership) {
 	hostname, _ := os.Hostname()
 	ticker := time.NewTicker(1000 * time.Millisecond)
 	var wg sync.WaitGroup
@@ -56,17 +56,10 @@ func HeartbeatManager(membership *Membership, leaveSignal chan int) {
 		go sendHeartbeats(membership, &wg)
 		wg.Wait()
 
-		// If we get a leave signal from the channel, leave 
-		select {
-		case signal := <- leaveSignal:
-			log.Info("Caught leave signal ", signal)
-			return
-		default:
-			// Do nothing	
-		}
-
 		// If the current node has not left the network then update its time
-		membership.Data[hostname] = time.Now().UnixNano() / int64(time.Millisecond)
+		if membership.Data[hostname] != 0 {
+			membership.Data[hostname] = time.Now().UnixNano() / int64(time.Millisecond)
+		}
 		removeExitedNodes(membership)
 	}
 }
