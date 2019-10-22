@@ -58,8 +58,9 @@ func HeartbeatManager(membership *Membership, leaveSignal chan int) {
 
 		// If we get a leave signal from the channel, leave 
 		select {
-		case <- leaveSignal:
-			break
+		case signal := <- leaveSignal:
+			log.Info("Caught leave signal ", signal)
+			return
 		default:
 			// Do nothing	
 		}
@@ -114,7 +115,6 @@ func writeMembershipList(membership *Membership, hostName string) {
 		return
 	}
 
-	log.Infof("Writing to %s", hostName)
 	conn.Write(memberSend)
 }
 
@@ -166,7 +166,6 @@ func processNewMembershipList(buffer []byte, readLen int, membership *Membership
 		return
 	}
 
-	log.Infof("Recieved heartbeat from %s", newMembership.SrcHost)
 	// This will loop through the membership recieved by the UDP request and update the
 	// timestamps in the current node.
 	for i := 0; i < len(newMembership.List); i++ {
