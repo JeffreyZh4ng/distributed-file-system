@@ -1,22 +1,22 @@
 package server
 
+/*
 import (
 	log "github.com/sirupsen/logrus"
-	"cs-425-mp3/rpcParams"
 )
+*/
 
 //Holds arguments to be passed to service Arith in RPC call
 type RequestArgs struct {
         SourceHost string
-        Data    []byte
-        DataLen int
+        Request    string
+	Data       []byte
 }
 
 type ResponseArgs struct {
         SourceHost string
         Hosts   []string
         Data    []byte
-        DataLen int
 }
 
 //Represents service Request
@@ -27,6 +27,7 @@ type Response ResponseArgs
 
 func (t *Request) Put(request RequestArgs, response *ResponseArgs) error {
 	// This should contain the servers response to the rpc calls
+	return nil
 }
 
 func (t *Request) PutConfirm(request RequestArgs, response *ResponseArgs) {

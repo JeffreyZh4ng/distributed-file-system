@@ -3,13 +3,7 @@ package main
 import (
 	log "github.com/sirupsen/logrus"
 	"cs-425-mp3/client"
-	"net"
 	"os"
-	"regexp"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 func parseArgs() (string, []string) {

@@ -1,7 +1,6 @@
 package server
 
 import (
-	log "github.com/sirupsen/logrus"
 	"os"
 	"time"
 )
@@ -32,7 +31,7 @@ func FileSystemManager(membership *Membership) {
 
 		// Loop through all nodes in the store map. If any of the nodes in the map have timeouts greater than the allowed timeout in the membership map then we need to remove them and figure out where to store the other files.
 		currTime := time.Now().UnixNano() / int64(time.Millisecond)
-		for serverName, _ := range membership.Requests.Storage {
+		for serverName, _ := range membership.Pending.List {
 
 			lastPing := membership.Data[serverName]
 			if lastPing == 0 || currTime-lastPing > FILESYSTEM_TIMEOUT_MS {
