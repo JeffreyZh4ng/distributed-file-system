@@ -26,16 +26,16 @@ func serverSetup() (*server.Membership, *net.UDPConn) {
 	log.Infof("Connected to %s!", hostname)
 
 	// Initialize struct to include itself in its membership list
-	fileSystem := &server.Directory{
+	requests := &server.Requests{
 		LastUpdate: time.Now().UnixNano() / int64(time.Millisecond),
-		Storage: map[string][]string{},
+		List: map[string][]string{},
 	}
 
 	membership := &server.Membership{
 		SrcHost: hostname,
 		Data:    map[string]int64{hostname: time.Now().UnixNano() / int64(time.Millisecond)},
 		List:    []string{hostname},
-		Store:   fileSystem,
+		Pending:   requests,
 	}
 
 	server.ServerJoin(membership)
@@ -62,11 +62,7 @@ func main() {
 		case "list":
 			log.Infof("Current list:\n%s", membership.List)
 		case "store":
-			if fileList, contains := membership.Store.Storage[hostname]; !contains {
-				log.Info("No files stored at this node!")
-			} else {
-				log.Infof("Files at this node:\n%s", fileList)
-			}
+			// TODO: Need to fix. This is more complicated now
 		case "leave":
 			log.Infof("Node %s is leaving the network!", hostname)
 			membership.Data[hostname] = 0
