@@ -6,10 +6,16 @@ import (
 	"time"
 )
 
+var FILESYSTEM_TIMEOUT_MS int64 = 6000
+
 // Every heartbeat will also contain a list of all files in the system
-type Directory struct {
+type Requests struct {
 	LastUpdate int64
-	Storage    map[string][]string
+	List	   map[string][]string
+}
+
+type fileSystem struct {
+	
 }
 
 func FileSystemManager(membership *Membership) {
@@ -18,21 +24,24 @@ func FileSystemManager(membership *Membership) {
 
 	for {
 		<-ticker.C
+
+		// The leader will be the lowest ID node
 		if membership.List[0] != hostname {
 			continue
 		}
 
-		// Loop through all nodes in the store map. If any of the nodes in the map have timeouts greater than the allowed timeout in the membership map then we need to remove them and figure out where to stoer the other files.
+		// Loop through all nodes in the store map. If any of the nodes in the map have timeouts greater than the allowed timeout in the membership map then we need to remove them and figure out where to store the other files.
 		currTime := time.Now().UnixNano() / int64(time.Millisecond)
-		for serverName, _ := range membership.Store.Storage {
-			lastPing := membership.Data[hostname]
-			if lastPing == 0 || currTime-lastPing > TIMEOUT_MS {
-				// Node has timed out. Remove it from the map
-				log.Infof("%s", serverName)
+		for serverName, _ := range membership.Requests.Storage {
+
+			lastPing := membership.Data[serverName]
+			if lastPing == 0 || currTime-lastPing > FILESYSTEM_TIMEOUT_MS {
+				// Remove the node from the store and send the file
 			}
 		}
 	}
 }
 
 func rebalanceFileSystem() {
+
 }
