@@ -20,7 +20,7 @@ type Membership struct {
 	SrcHost string
 	Data    map[string]int64
 	List    []string
-	Pending *Requests
+	Pending []*Request
 }
 
 func ServerJoin(membership *Membership) {
@@ -197,11 +197,6 @@ func processNewMembershipList(buffer []byte, readLen int, membership *Membership
 				log.Infof("Recieved updated time from node %s. Adding back to list", nextHostname)
 			}
 		}
-	}
-
-	// If there was an update to the filesystem, get the change
-	if newMembership.Pending.LastUpdate > membership.Pending.LastUpdate {
-		membership.Pending = newMembership.Pending
 	}
 
 	// Update the time of the node who sent the list. We need to check if the node has not left
