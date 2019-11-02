@@ -21,5 +21,15 @@ type localFiles struct {
 }
 
 func FileSystemManager(membership *Membership) {
+	hostname, _ := os.Hostname()
+	ticker := time.NewTicker(1000 * time.Millisecond)
+	
+	for {
+		<-ticker.C
+		// Check if there are any requests in the membership list
+		for i := 0; i < len(membership.Pending); i++ {
+			// Do different things based on each request
+		}
+	}
 }
 
