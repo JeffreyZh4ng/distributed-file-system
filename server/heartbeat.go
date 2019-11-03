@@ -16,19 +16,31 @@ var TIMEOUT_MS int64 = 3000
 var INTRODUCER_NODE string = "fa19-cs425-g84-01.cs.illinois.edu"
 
 // Need to store extra list that maintains order or the list
+// MP3 membership also handles pending requests
 type Membership struct {
 	SrcHost string
 	Data    map[string]int64
 	List    []string
-	Pending *Requests
+	
+	LeaderUpdateTime int64
+	Pending []*Request
 }
 
+// Every heartbeat will also contain a list of all files in the system
+type Request struct {
+	RequestID int
+	Type     string
+	SrcHost  string
+	FileName string
+}
+
+// Server setup that will make initial connections
 func ServerJoin(membership *Membership) {
-	// If the node is not the introducer node, send a heartbeat to the 0th node
 	hostname, _ := os.Hostname()
 	if hostname != INTRODUCER_NODE {
 		log.Info("Writing to the introducer!")
 		writeMembershipList(membership, INTRODUCER_NODE)
+	
 	} else {
 		log.Info("Introducer attempting to reconnect to any node!")
 		for i := 2; i <= 10; i++ {
@@ -150,44 +162,44 @@ func ListenForUDP(ser *net.UDPConn, membership *Membership) {
 		if readLen == 0 {
 			continue
 		}
+		
+		newMembership := Membership{}
+		err := json.Unmarshal(buffer[:readLen], &newMembership)
+		if err != nil {
+			log.Infof("Could not decode request! %s", err)
+			return
+		}
 
-		processNewMembershipList(buffer, readLen, membership)
+		processNewMembershipList(membership, newMembership)
+		if newMembership.LeaderUpdateTime > membership.LeaderUpdateTime {
+			membership.Pending = newMembership.Pending
+		}
 	}
 }
 
-// This function is called when the node recieves a UDP message
-func processNewMembershipList(buffer []byte, readLen int, membership *Membership) {
-	newMembership := Membership{}
-	err := json.Unmarshal(buffer[:readLen], &newMembership)
-	if err != nil {
-		log.Infof("Could not decode request! %s", err)
-		return
-	}
-
-	// This will loop through the membership recieved by the UDP request and update the
-	// timestamps in the current node.
+// Loop through the new membership and update the timestamps in the current node.
+func processNewMembershipList(membership *Membership, newMembership *Membership) {
 	for i := 0; i < len(newMembership.List); i++ {
 		nextHostname := newMembership.List[i]
 
-		// If it finds a node that is not in the data map, add it to the list and map.
+		// If it finds a node that is not in the data map, add it to list and map
 		if pingTime, contains := membership.Data[nextHostname]; !contains {
 			membership.Data[nextHostname] = newMembership.Data[nextHostname]
 
 			membership.List = append(membership.List, nextHostname)
 			sort.Strings(membership.List)
 
-			// If the current node left the network or we get a UDP request that indicates the node
-			// left the network then set the time in the data to 0.
+		// If the time in the new list is 0, the node left the network
 		} else if newMembership.Data[nextHostname] == 0 {
 			membership.Data[nextHostname] = 0
 
-			// If the stored ping time is less than the UDP request time, update the time
+		// If the new membership has a more recent time, update it
 		} else if pingTime < newMembership.Data[nextHostname] {
 			membership.Data[nextHostname] = newMembership.Data[nextHostname]
 
-			// If the hostname is not in the list but it's in the data map, add it back
-			// to the list. This means it was removed from the list because it failed
-			// or left, and we just recieved a new time indicating that it's rejoining.
+			// If the hostname is not in the list but it's in the data map,
+			// it was removed from the list because it faile or left, and 
+			// we just recieved a new time indicating that it's rejoining.
 			currTime := time.Now().UnixNano() / int64(time.Millisecond)
 			if findHostnameIndex(membership, nextHostname) >= len(membership.List) &&
 				currTime-newMembership.Data[nextHostname] < TIMEOUT_MS {
@@ -199,12 +211,9 @@ func processNewMembershipList(buffer []byte, readLen int, membership *Membership
 		}
 	}
 
-	// If there was an update to the filesystem, get the change
-	if newMembership.Pending.LastUpdate > membership.Pending.LastUpdate {
-		membership.Pending = newMembership.Pending
-	}
-
-	// Update the time of the node who sent the list. We need to check if the node has not left
+	// Update the time of the node who sent the list. Need to check if that node left
+	// Because if a node leaves it will send a few heartbeats to other nodes to
+	// Inform others that the node left the system
 	if membership.Data[newMembership.SrcHost] != 0 {
 		membership.Data[newMembership.SrcHost] = time.Now().UnixNano() / int64(time.Millisecond)
 	}

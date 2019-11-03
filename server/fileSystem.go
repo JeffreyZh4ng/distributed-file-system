@@ -1,46 +1,216 @@
 package server
 
 import (
+	"net"
 	"os"
 	"time"
+	"strings"
 )
 
-var FILESYSTEM_TIMEOUT_MS int64 = 6000
-
-// Every heartbeat will also contain a list of all files in the system
-type Requests struct {
-	LastUpdate int64
-	List	   map[string][]string
+// Local datastore that keeps track of the other nodes that have the same files
+type LocalFiles struct {
+	Files map[string][]string
+	UpdateTimes map[string]int64
 }
 
-type fileSystem struct {
-	
+type NodeMessage struct {
+	RequestID int
+	Timestamp int64
+	NodeList []string
 }
 
-func FileSystemManager(membership *Membership) {
+var PARENT_DIR string = "nodeFiles"
+var FILE_PORT_NUM string = "5000"
+var NODE_PORT_NUM string = "6000"
+
+// go routine that will handle requests and resharding of files from failed nodes
+func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
 	hostname, _ := os.Hostname()
+	completedRequests := map[int]int64
 	ticker := time.NewTicker(1000 * time.Millisecond)
 
 	for {
 		<-ticker.C
 
-		// The leader will be the lowest ID node
-		if membership.List[0] != hostname {
-			continue
-		}
+		// Check if there are any requests in the membership list
+		for _, request := range membership.Pending {
+			
+			// If the request is in the complete list then continue
+			if _, contains := completedRequests[request.RequestID]; contains {
+				continue
+			}
 
-		// Loop through all nodes in the store map. If any of the nodes in the map have timeouts greater than the allowed timeout in the membership map then we need to remove them and figure out where to store the other files.
-		currTime := time.Now().UnixNano() / int64(time.Millisecond)
-		for serverName, _ := range membership.Pending.List {
+			requestCompleted := false
+			switch request.Type {
+			case "put":
+				requestCompleted = serverHandlePut(membership, localFiles, request)	
+			case "get":
+				requestCompleted = serverHandleGet(membership, localFiles, request)
+			case "delete":
+				requestCompleted = serverHandleDelete(membership, localFiles, request)
+			case "ls":
+				requestCompleted = serverHandleLs(membership, localFiles, request)
+			}
 
-			lastPing := membership.Data[serverName]
-			if lastPing == 0 || currTime-lastPing > FILESYSTEM_TIMEOUT_MS {
-				// Remove the node from the store and send the file
+			if requestCompleted {
+				completedRequests[request.RequestID] = time.Now().UnixNano() / int64(time.Millisecond)
 			}
 		}
+
+		// Check for any failed nodes
 	}
 }
 
-func rebalanceFileSystem() {
+func serverHandlePut(membership *Membership, localFiles *LocalFiles, request *Request) (bool) {
+	hostname, _ := os.Hostname()
+	fileGroup, contains := localFiles.Files[request.FileName]
+	
+	// Only thing we do for the put when the node is the fileMaster is send the info to leader
+	if contains && fileGroup[0] == hostName { 
+		leaderHostName := membership.List[0]
+		messageToLeader := NodeMessage{
+			RequestID: request.RequestID,
+			Timestamp: localFiles.UpdateTimes[request.FileName],
+			NodeList: fileGroup,
+		}
+		contactNode(leaderHostName, messageToLeader)
+		return true
+	}
 
+	return contains
+}
+
+func serverHandleGet(membership *Membership, localFiles *LocalFiles, request *Request) (bool) {
+	hostname, _ := os.Hostname()
+	fileGroup, contains := localFiles.Files[request.FileName]
+
+	// If the current node contains the file and the node is the file master, send the file
+	if contains && fileGroup[0] == hostName {
+		socket := establishTCP(request.SrcHost)
+		if socket == nil {
+			return false
+		}
+		defer socket.Close()
+
+		// Open and send the file from the cs-425-mp3 directory
+		localFilePath := "../" + PARENT_DIR + "/" + request.FileName
+		file, err:= os.Open(localFilePath)
+		defer file.Close()
+		if err != nil {
+			log.Infof("Unable to open local file: %s", err)
+			return false
+		}
+		
+		_, err := io.Copy(socket, file)
+		if err != nil {
+			log.Info("Server could not write the fileto the client!")
+			return false
+		}
+
+		leaderHostName := membership.List[0]
+		messageToLeader := NodeMessage{
+			RequestID: request.RequestID,
+			Timestamp: 0,
+			NodeList: []string,
+		}
+		contactNode(leaderHostName, messageToLeader)
+		return true
+	}
+
+	return contains
+}
+
+func serverHandleDelete(membership *Membership, localFiles *LocalFiles, request *Request) (bool) {
+	if _, contains := localFiles.Files[request.FileName]; contains {
+		delete(localFiles.Files, request.FileName)
+		delete(localFiles.UpdateTimes, request.FileName)
+
+		err := os.Remove("../" + PARENT_DIR + "/" + request.FileName)
+		if err != nil {
+			log.Infof("Unable to remove file %s from local node!", request.FileName)
+			return false
+		}
+
+		leaderHostName := membership.List[0]
+		messageToLeader := NodeMessage{
+			RequestID: request.RequestID,
+			Timestamp: 0,
+			NodeList: []string,
+		}
+		contactNode(leaderHostName, messageToLeader)
+		return true
+	}
+	
+	return false
+}
+
+func serverHandleLs(membership *Membership, localFiles *LocalFiles, request *Request) (bool) {
+	hostname, _ := os.Hostname()
+	fileGroup, contains := fileInfo[request.FileName]
+
+	// If the current node contains the file and the node is the file master
+	if contains && fileGroup[0] == hostName {
+		socket := establishTCP(request.SrcHost)
+		if socket == nil {
+			return false
+		}
+		defer socket.Close()
+
+		// Send the string to the client
+		fileGroupString := strings.Join(fileGroup, ",")
+		jsonMessage, _ := json.Marshal(fileGroupString)
+		_, err := socket.Write(jsonMessage)
+		if err != nil {
+			log.Infof("Could not write list to client!")
+			return false
+		}
+		
+		leaderHostName := membership.List[0]
+		messageToLeader := NodeMessage{
+			RequestID: request.RequestID,
+			Timestamp: 0,
+			NodeList: []string,
+		}
+		contactNode(leaderHostName, messageToLeader)
+		return true
+	}
+
+	return contains
+}
+
+// Helper method that will contact a specified node and send a node message
+func contactNode(nodeHostName string, leaderMessage *NodeMessage) {
+	leaderHostName := membership.List[0]
+	tcpAddr, err := net.ResolveTCPAddr("tcp", leaderHostName + ":" + NODE_PORT_NUM)
+	if err != nil {
+		log.Info("Could not resolve the hostname!")
+		return
+	}
+
+	socket, err := net.DialTCP("tcp", nil, tcpAddr)
+	defer socket.Close()
+	if err != nil {
+		log.Info("Server could not dial the client!")
+		return
+	}
+
+	jsonMessage, _ := json.Marshal(leaderMessage)
+	socket.Write(jsonMessage)
+}
+
+// Helper that establishes a TCP connection
+func establishTCP(hostname string) (*net.TCPConn) {
+	tcpAddr, err := net.ResolveTCPAddr("tcp", hostname + ":" + FILE_PORT_NUM)
+	if err != nil {
+		log.Info("Could not resolve the hostname!")
+		return nil
+	}
+
+	socket, err := net.DialTCP("tcp", nil, tcpAddr)
+	if err != nil {
+		log.Info("Server could not dial the client!")
+		return nil
+	}
+
+	return socket
 }
