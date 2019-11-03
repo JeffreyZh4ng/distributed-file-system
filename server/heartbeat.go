@@ -26,6 +26,14 @@ type Membership struct {
 	Pending []*Request
 }
 
+// Every heartbeat will also contain a list of all files in the system
+type Request struct {
+	RequestID int
+	Type     string
+	SrcHost  string
+	FileName string
+}
+
 // Server setup that will make initial connections
 func ServerJoin(membership *Membership) {
 	hostname, _ := os.Hostname()
