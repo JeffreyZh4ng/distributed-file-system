@@ -22,6 +22,7 @@ type NodeMessage struct {
 var PARENT_DIR string = "nodeFiles"
 var FILE_PORT_NUM string = "5000"
 var NODE_PORT_NUM string = "6000"
+var NUM_REPLICAS int = 4
 
 // go routine that will handle requests and resharding of files from failed nodes
 func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
@@ -58,6 +59,7 @@ func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
 		}
 
 		// Check for any failed nodes
+		findFailedNodes(membership, localFiles)
 	}
 }
 
@@ -213,4 +215,37 @@ func establishTCP(hostname string) (*net.TCPConn) {
 	}
 
 	return socket
+}
+
+func findFailedNodes(membership *Membership, localFiles *LocalFiles) {
+	hostname, _ := os.Hostname()	
+	currentFiles := map[string]int
+	for _, host := range membership.List {
+		currentFiles[host] = 0
+	}
+
+	// Loop through every node in every file stored in the local system
+	for fileName, fileGroup := range LocalFiles.Files {
+
+		runningNodes := []string{}
+		for _, node := range fileGroup {
+			
+			if _, contains := currentFiles[node]; !contains {
+				runningNodes = append(runningNodes, node)
+			}
+		}
+
+		// If the current node is the lowest ID node that has not filed, reshard
+		if runningNodes[0] == hostname {
+			reshardFiles(membership, runningNodes)
+		}
+	}
+}
+
+func reshardFiles(membership *Membership, runningNodes []string) {
+	// Pick a random node in the current membership list that does not already have the file
+	for i := 0; i < NUM_REPLICAS - len(runningNodes); i++ {
+		// Send a TCP request to the node that were duplicating the file to.
+		// Wait for a response from that node to ensure that all nodeGroup lists have been updated
+	}
 }
