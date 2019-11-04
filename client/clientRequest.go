@@ -26,10 +26,10 @@ func initRequest(requestType string, fileName string) *net.TCPConn{
 
 	for i := 1; i <= 10; i++ {
 		numStr := strconv.Itoa(i)
-		connectName := "fa19-cs425-g84-0" + numStr + ".cs.illinois.edu"
+		connectName := "fa19-cs425-g84-" + numStr + ".cs.illinois.edu"
 
 		clientRequestConn, err := establishTCP(connectName, CLIENT_MSG_PORT)
-		if err != nil{
+		if err != nil {
 			log.Infof("Could not connect to %s, try next", connectName)
 			continue
 		}
@@ -46,35 +46,8 @@ func initRequest(requestType string, fileName string) *net.TCPConn{
 	}
 	return nil
 }
-func ClientDel(args []string){
-	fileName := args[0]
-	clientRequestConn := initRequest("ls_init", fileName)
-	clientRequestConn.Close()
-}
 
-func ClientLs(args []string){
-	fileName := args[0]
-	clientRequestConn := initRequest("ls_init", fileName)
-		// Make ls request message sent to leader
-
-		// Waiting for leader response
-		msgbuf := make([]byte, 1024)
-		msglen, err := clientRequestConn.Read(msgbuf)
-		if err != nil {
-			log.Infof("TCP read error %s", err)
-			return
-		}	
-		newFileMsg := FileMsg{}
-		err = json.Unmarshal(msgbuf[:msglen], &newFileMsg)
-		if err != nil {
-			log.Infof("Unable to decode put respond msg %s", err)
-			return
-		}
-		log.Info(newFileMsg.Data)
-		clientRequestConn.Close()
-}
-
-func ClientGet(args []string){
+func ClientGet(args []string) {
 	fileName := args[0]
 	clientRequestConn := initRequest("ls_init", fileName)
 	localFilePath := FILE_ROOT + args[1]
@@ -133,6 +106,35 @@ func ClientPut(args []string){
 		return
 
 }
+
+func ClientDel(args []string){
+	fileName := args[0]
+	clientRequestConn := initRequest("ls_init", fileName)
+	clientRequestConn.Close()
+}
+
+func ClientLs(args []string){
+	fileName := args[0]
+	clientRequestConn := initRequest("ls_init", fileName)
+		// Make ls request message sent to leader
+
+		// Waiting for leader response
+		msgbuf := make([]byte, 1024)
+		msglen, err := clientRequestConn.Read(msgbuf)
+		if err != nil {
+			log.Infof("TCP read error %s", err)
+			return
+		}	
+		newFileMsg := FileMsg{}
+		err = json.Unmarshal(msgbuf[:msglen], &newFileMsg)
+		if err != nil {
+			log.Infof("Unable to decode put respond msg %s", err)
+			return
+		}
+		log.Info(newFileMsg.Data)
+		clientRequestConn.Close()
+}
+
 
 // For put and ls
 func handleLeaderResponse(responseMsg FileMsg, fileName string, localHost string, localFilePath string){
