@@ -13,7 +13,7 @@ import (
 var PORT_NUM string = "4000"
 
 // Helper method that will connect to nodes based on if it is the introducer or not
-func serverSetup() (*server.Membership, *server.FileSystem, *net.UDPConn) {
+func serverSetup() (*server.Membership, *server.LocalFiles, *net.UDPConn) {
 	hostname, _ := os.Hostname()
 	addr, err := net.ResolveUDPAddr("udp", hostname+":"+PORT_NUM)
 	if err != nil {
@@ -26,21 +26,17 @@ func serverSetup() (*server.Membership, *server.FileSystem, *net.UDPConn) {
 	log.Infof("Connected to %s!", hostname)
 
 	// Initialize struct to include itself in its membership list
-	requests := &server.Requests{
-		LastUpdate: time.Now().UnixNano() / int64(time.Millisecond),
-		List: map[string][]string{},
-	}
-
+	var s []*server.Request
 	membership := &server.Membership{
 		SrcHost: hostname,
 		Data:    map[string]int64{hostname: time.Now().UnixNano() / int64(time.Millisecond)},
 		List:    []string{hostname},
-		Pending:   requests,
+		Pending: s,
 	}
 
 	localFiles := &server.LocalFiles{
-		Files: map[string][]string,
-		UpdateTimes: map[string]int64
+		Files: map[string][]string{},
+		UpdateTimes: map[string]int64{},
 	}
 
 	server.ServerJoin(membership)

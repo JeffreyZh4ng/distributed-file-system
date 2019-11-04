@@ -3,12 +3,11 @@ package server
 import (
 	"encoding/json"
 	log "github.com/sirupsen/logrus"
+	"io"
 	"io/ioutil"
-	"math"
 	"math/rand"
 	"net"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -25,13 +24,11 @@ type PendingResponse struct {
 }
 
 var PARENT_DIR string = "nodeFiles"
-var SERVER_PORT string = "7000"
 var FINISHED_REQUEST_TTL int = 5000
 var NUM_REPLICAS int = 4
 
 // go routine that will handle requests and resharding of files from failed nodes
 func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
-	hostname, _ := os.Hostname()
 	completedRequests := make(map[int]int64)
 	ticker := time.NewTicker(1000 * time.Millisecond)
 
@@ -106,7 +103,11 @@ func serverHandleGet(membership *Membership, localFiles *LocalFiles, request *Re
 	fileGroup, contains := localFiles.Files[request.FileName]
 
 	// If the current node contains the file and the node is the file master, send the file
-	if contains && fileGroup[0] == hostName {
+	if contains && fileGroup[0] == hostname {
+		socket := establishTCP(request.SrcHost)
+		if socket == nil {
+			return false
+		}
 
 		// Open and send the file from the cs-425-mp3 directory
 		localFilePath := "../" + PARENT_DIR + "/" + request.FileName
@@ -116,7 +117,7 @@ func serverHandleGet(membership *Membership, localFiles *LocalFiles, request *Re
 			return false
 		}
 
-		_, err := io.Copy(socket, file)
+		_, err = io.Copy(socket, file)
 		if err != nil {
 			log.Info("Server could not write the fileto the client!")
 			return false
@@ -163,25 +164,24 @@ func serverHandleDelete(membership *Membership, localFiles *LocalFiles, request 
 
 func serverHandleLs(membership *Membership, localFiles *LocalFiles, request *Request) bool {
 	hostname, _ := os.Hostname()
-	fileGroup, contains := fileInfo[request.FileName]
+	fileGroup, contains := localFiles.Files[request.FileName]
 
 	// If the current node contains the file and the node is the file master
-	if contains && fileGroup[0] == hostName {
+	if contains && fileGroup[0] == hostname {
 		socket := establishTCP(request.SrcHost)
 		if socket == nil {
 			return false
 		}
 
 		// Send the string to the client
-		fileGroupString := strings.Join(fileGroup, ",")
 		pendingResponse := PendingResponse{
 			ID:        request.ID,
 			Timestamp: 0,
-			NodeList:  fileGroupString,
+			NodeList:  fileGroup,
 		}
 
 		jsonPending, _ := json.Marshal(pendingResponse)
-		nodeMessage := server.NodeMessage{
+		nodeMessage := NodeMessage{
 			MsgType:  "PendingLs",
 			FileName: "",
 			SrcHost:  "",
@@ -198,8 +198,7 @@ func serverHandleLs(membership *Membership, localFiles *LocalFiles, request *Req
 
 // Helper method that will contact a specified node and send a node message
 func contactNode(nodeHostName string, leaderMessage NodeMessage) {
-	leaderHostName := membership.List[0]
-	tcpAddr, err := net.ResolveTCPAddr("tcp", leaderHostName+":"+SERVER_PORT)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", nodeHostName+":"+SERVER_PORT)
 	if err != nil {
 		log.Info("Could not resolve the hostname!")
 		return
@@ -241,7 +240,7 @@ func findFailedNodes(membership *Membership, localFiles *LocalFiles) {
 	}
 
 	// Loop through every node in every file stored in the local system
-	for fileName, fileGroup := range LocalFiles.Files {
+	for fileName, fileGroup := range localFiles.Files {
 
 		runningNodes := []string{}
 		for _, node := range fileGroup {
@@ -259,12 +258,13 @@ func findFailedNodes(membership *Membership, localFiles *LocalFiles) {
 }
 
 func reshardFiles(membership *Membership, runningNodes []string, fileName string) {
+	hostname, _ := os.Hostname()
 	for i := 0; i < NUM_REPLICAS-len(runningNodes); i++ {
 
 		// Disgusting random function that will loop until it finds a node not in the runningNodes list
 		randIndex := 0
 		for {
-			randIndex = math.Intn(len(membership.List))
+			randIndex = rand.Intn(len(membership.List))
 			nodeName := membership.List[randIndex]
 			for i := 0; i < len(runningNodes); i++ {
 				if runningNodes[i] == nodeName {
@@ -275,13 +275,14 @@ func reshardFiles(membership *Membership, runningNodes []string, fileName string
 			break
 		}
 
-		loadedFile := ioutil.ReadFile(PARENT_DIR + "/" + fileName)
+		loadedFile, _ := ioutil.ReadFile(PARENT_DIR + "/" + fileName)
 		nodeMessage := NodeMessage{
 			MsgType:  "ReshardRequest",
-			FileName: file,
-			SrcHost:  localHost,
+			FileName: fileName,
+			SrcHost:  hostname,
 			Data:     loadedFile,
 		}
+
 
 		randomNode := membership.List[randIndex]
 		socket := establishTCP(randomNode)

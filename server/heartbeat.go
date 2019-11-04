@@ -163,8 +163,8 @@ func ListenForUDP(ser *net.UDPConn, membership *Membership) {
 			continue
 		}
 
-		newMembership := Membership{}
-		err := json.Unmarshal(buffer[:readLen], &newMembership)
+		newMembership := &Membership{}
+		err = json.Unmarshal(buffer[:readLen], &newMembership)
 		if err != nil {
 			log.Infof("Could not decode request! %s", err)
 			return

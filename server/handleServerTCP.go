@@ -7,12 +7,26 @@ import (
 	"encoding/json"
 	log "github.com/sirupsen/logrus"
 	"net"
-	"strings"
+	"os"
+	"time"
 )
+
+type NodeMessage struct {
+	MsgType   string
+	FileName  string
+	SrcHost   string
+	Data      []byte
+}
+
+type ClientRequest struct {
+	MsgType  string
+	FileName string
+	SrcHost  string
+}
 
 var SERVER_PORT string = "5000"
 var CLIENT_PORT string = "6000"
-var SERVER_PORT string = "7000"
+var FILE_PORT string = "7000"
 var REQUEST_TIMEOUT int64 = 5000
 
 // goroutine that serverMain will call that will handle accepting TCP connections
@@ -23,12 +37,12 @@ func RequestListener(membership *Membership, localfiles *LocalFiles) {
 	infoTransfer := map[int][]string{}
 
 	go TcpClientListener(membership, infoTransfer)
-	go TcpServerListener(membership, localFiles, infoTransfer)
+// go TcpServerListener(membership, localFiles, infoTransfer)
 }
 
-func openTCPListener(portNum string) {
+func openTCPListener(portNum string) (*net.TCPListener) {
 	hostname, _ := os.Hostname()
-	tcpAddr, err := ResolveTCPAddr("tcp", hostname+":"+portNum)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", hostname+":"+portNum)
 	if err != nil {
 		log.Fatal("Could not resolve the hostname!")
 	}
@@ -43,34 +57,34 @@ func openTCPListener(portNum string) {
 
 // This will listen for any client connection and will process their request
 func TcpClientListener(membership *Membership, infoTransfer map[int][]string) {
-	listener = openTCPListener(CLIENT_PORT)
+	listener := openTCPListener(CLIENT_PORT)
 	requestID := 1000
 
 	for {
-		conn, _ := listener.AcceptTCP()
-		readLen, buffer := make([]byte, 1024)
-		conn.Read(msgbuf)
+		 conn, _ := listener.AcceptTCP()
+		 buffer := make([]byte, 1024)
+		 readLen, _ := conn.Read(buffer)
 
 		clientRequest := ClientRequest{}
-		json.Unmarshal(msgbuf[:readLen], &clientRequest)
+		json.Unmarshal(buffer[:readLen], &clientRequest)
 
 		request := &Request{
 			ID:       requestID,
-			Type:     clientRequest.RequestType,
+			Type:     clientRequest.MsgType,
 			SrcHost:  clientRequest.SrcHost,
 			FileName: clientRequest.FileName,
 		}
 		requestID++
 
-		switch clientRequest.RequestType {
+		switch clientRequest.MsgType {
 		case "get":
 			go handleGetRequest(membership, request)
 		case "put":
-			go handlePutRequest(membership, request, infoTransfer)
+			// go handlePutRequest(membership, request, infoTransfer)
 		case "delete":
-			go handleDeleteRequest(membership, request)
+			// go handleDeleteRequest(membership, request)
 		case "ls":
-			go handleLsRequest(membership, request)
+			// go handleLsRequest(membership, request)
 		}
 	}
 }
@@ -89,14 +103,14 @@ func handleGetRequest(membership *Membership, request *Request) {
 		}
 	}
 }
-
+/*
 func handlePutRequest(membership *Membership, request *Request) {
 	startTime := time.Now().UnixNano() / int64(time.Millisecond)
 	elapsedTime := 0
 	ticker := time.NewTicker(1000 * time.Millisecond)
 
 	for {
-		<-ticket.C
+		<-ticker.C
 
 		if _, contains := infoTransfer[requestID]; contains {
 			break
@@ -110,6 +124,7 @@ func handlePutRequest(membership *Membership, request *Request) {
 		}
 	}
 }
+*/
 
 func TcpServerListener(membership *Membership, localfiles *LocalFiles) {
 	// listener = openTCPListener(SERVER_PORT)
