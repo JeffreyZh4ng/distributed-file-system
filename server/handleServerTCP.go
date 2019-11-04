@@ -31,7 +31,7 @@ var REQUEST_TIMEOUT int64 = 5000
 
 // goroutine that serverMain will call that will handle accepting TCP connections
 // Needs to handle incoming TCP connections from other nodes as well as incoming connections from the client
-func FileSystemManager(membership *Membership, localfiles *LocalFiles) {
+func TCPManager(membership *Membership, localfiles *LocalFiles) {
 
 	// This will be used to communicate between goroutines
 	infoTransfer := map[int][]string{}

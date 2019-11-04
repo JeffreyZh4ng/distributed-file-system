@@ -51,6 +51,7 @@ func main() {
 	go server.HeartbeatManager(membership)
 	go server.ListenForUDP(ser, membership)
 	go server.FileSystemManager(membership, localFiles)
+	go server.TCPManager(membership, localFiles)
 
 	for {
 		reader := bufio.NewReader(os.Stdin)
