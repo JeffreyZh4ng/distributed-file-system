@@ -65,7 +65,7 @@ func main() {
 			log.Infof("Current list:\n%s", membership.List)
 		case "store":
 			fileList := []string{}
-			for fileName, _ range localFiles.Files {
+			for fileName, _ := range localFiles.Files {
 				fileList = append(fileList, fileName)
 			}
 			log.Infof("Files stored in the server:\n%s", fileList)
