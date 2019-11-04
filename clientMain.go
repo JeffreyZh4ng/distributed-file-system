@@ -22,7 +22,7 @@ func main() {
 	if command == "put" && len(args) == 2 {
 		//client.ClientPut(args)
 	} else if command == "get" && len(args) == 2 {
-		//client.ClientGet(args)
+		client.ClientGet(args)
 	} else if command == "delete" && len(args) == 1 {
 		client.ClientDel(args)
 	} else if command == "ls" && len(args) == 1 {

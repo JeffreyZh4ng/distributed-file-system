@@ -31,13 +31,13 @@ var REQUEST_TIMEOUT int64 = 5000
 
 // goroutine that serverMain will call that will handle accepting TCP connections
 // Needs to handle incoming TCP connections from other nodes as well as incoming connections from the client
-func RequestListener(membership *Membership, localfiles *LocalFiles) {
+func FileSystemManager(membership *Membership, localfiles *LocalFiles) {
 
 	// This will be used to communicate between goroutines
 	infoTransfer := map[int][]string{}
 
 	go TcpClientListener(membership, infoTransfer)
-// go TcpServerListener(membership, localFiles, infoTransfer)
+	// go TcpServerListener(membership, localFiles, infoTransfer)
 }
 
 func openTCPListener(portNum string) (*net.TCPListener) {
@@ -58,6 +58,7 @@ func openTCPListener(portNum string) (*net.TCPListener) {
 // This will listen for any client connection and will process their request
 func TcpClientListener(membership *Membership, infoTransfer map[int][]string) {
 	listener := openTCPListener(CLIENT_PORT)
+	log.Info("tasd")
 	requestID := 1000
 
 	for {
