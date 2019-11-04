@@ -37,7 +37,7 @@ func TCPManager(membership *Membership, localfiles *LocalFiles) {
 	infoTransfer := map[int][]string{}
 
 	go TcpClientListener(membership, infoTransfer)
-	// go TcpServerListener(membership, localFiles, infoTransfer)
+	go TcpServerListener(membership, infoTransfer)
 }
 
 func openTCPListener(portNum string) (*net.TCPListener) {
@@ -58,13 +58,12 @@ func openTCPListener(portNum string) (*net.TCPListener) {
 // This will listen for any client connection and will process their request
 func TcpClientListener(membership *Membership, infoTransfer map[int][]string) {
 	listener := openTCPListener(CLIENT_PORT)
-	log.Info("tasd")
 	requestID := 1000
 
 	for {
-		 conn, _ := listener.AcceptTCP()
-		 buffer := make([]byte, 1024)
-		 readLen, _ := conn.Read(buffer)
+		conn, _ := listener.AcceptTCP()
+		buffer := make([]byte, 1024)
+		readLen, _ := conn.Read(buffer)
 
 		clientRequest := ClientRequest{}
 		json.Unmarshal(buffer[:readLen], &clientRequest)
@@ -79,7 +78,7 @@ func TcpClientListener(membership *Membership, infoTransfer map[int][]string) {
 
 		switch clientRequest.MsgType {
 		case "get":
-			go handleGetRequest(membership, request)
+			go handleGetRequest(membership, request, infoTransfer)
 		case "put":
 			// go handlePutRequest(membership, request, infoTransfer)
 		case "delete":
@@ -90,15 +89,14 @@ func TcpClientListener(membership *Membership, infoTransfer map[int][]string) {
 	}
 }
 
-func handleGetRequest(membership *Membership, request *Request) {
+func handleGetRequest(membership *Membership, request *Request, infoTransfer map[int][]string) {
 	startTime := time.Now().UnixNano() / int64(time.Millisecond)
-	elapsedTime := 0
 	ticker := time.NewTicker(1000 * time.Millisecond)
 
 	for {
 		<-ticker.C
 
-		if _, contains := infoTransfer[requestID]; contains {
+		if _, contains := infoTransfer[request.ID]; contains {
 			break
 		}
 
@@ -106,7 +104,7 @@ func handleGetRequest(membership *Membership, request *Request) {
 		if currTime-startTime > REQUEST_TIMEOUT {
 			tcpAddr, _ := net.ResolveTCPAddr("tcp", request.SrcHost+":"+FILE_PORT)
 			socket, _ := net.DialTCP("tcp", nil, tcpAddr)
-			socket.write([]byte("fail"))
+			socket.Write([]byte("fail"))
 			break
 		}
 	}
@@ -142,13 +140,26 @@ func handlePutRequest(membership *Membership, request *Request) {
 }
 */
 
-func TcpServerListener(membership *Membership, localfiles *LocalFiles) {
-	// listener = openTCPListener(SERVER_PORT)
+func TcpServerListener(membership *Membership, infoTransfer map[int][]string) {
+	listener := openTCPListener(SERVER_PORT)
 
 	for {
-		// conn, _ := listener.AcceptTCP()
-		// readLen, buffer := make(byte[], 1024)
-		// json.Unmarshal(msgbuf[:readLen], &clientRequest)
+		conn, _ := listener.AcceptTCP()
+		buffer := make([]byte, 1024)
+		readLen, _ := conn.Read(buffer)
+	
+		nodeMessage := &NodeMessage{}
+		json.Unmarshal(buffer[:readLen], &nodeMessage)
 
+		if nodeMessage.MsgType == "PendingPut" ||
+		   nodeMessage.MsgType == "PendingGet" ||
+		   nodeMessage.MsgType == "PendingDelete" ||
+		   nodeMessage.MsgType == "PendingLs" {
+			pendingResponse := &PendingResponse{}
+			json.Unmarshal(nodeMessage.Data, pendingResponse)
+		
+			// We will do different thing later
+			infoTransfer[pendingResponse.ID] = []string{}
+		}
 	}
 }
