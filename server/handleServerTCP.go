@@ -39,7 +39,7 @@ func TCPManager(membership *Membership, localFiles *LocalFiles) {
 	infoTransfer := map[int]int{}
 
 	go TcpClientListener(membership, infoTransfer)
-	go TcpServerListener(membership, infoTransfer)
+	go TcpServerListener(membership, localFiles, infoTransfer)
 	go TcpFileListener(localFiles)
 }
 
@@ -147,7 +147,7 @@ func getRandomNodes(membership *Membership) ([]string) {
 	return nodeList
 }
 
-func TcpServerListener(membership *Membership, infoTransfer map[int]int) {
+func TcpServerListener(membership *Membership, localFiles *LocalFiles, infoTransfer map[int]int) {
 	listener := openTCPListener(SERVER_PORT)
 
 	for {
@@ -157,18 +157,20 @@ func TcpServerListener(membership *Membership, infoTransfer map[int]int) {
 	
 		nodeMessage := &NodeMessage{}
 		json.Unmarshal(buffer[:readLen], &nodeMessage)
-
+		
+		pendingResponse := &PendingResponse{}
+		json.Unmarshal(nodeMessage.Data, pendingResponse)
+		
 		if nodeMessage.MsgType == "PendingPut" {
 			// We need to send the list back to the client
+			localFiles[pendingResponse.ID] = pendingResponse.NodeList
 		}
 
 		if nodeMessage.MsgType == "PendingPut" ||
 		   nodeMessage.MsgType == "PendingGet" ||
 		   nodeMessage.MsgType == "PendingDelete" ||
 		   nodeMessage.MsgType == "PendingLs" {
-			pendingResponse := &PendingResponse{}
-			json.Unmarshal(nodeMessage.Data, pendingResponse)
-		
+			
 			// We will do different thing later
 			infoTransfer[pendingResponse.ID] = 0
 		}
