@@ -154,7 +154,7 @@ func ClientLs(args []string) {
 }*/
 
 func writeFile(filePath string, readConn *net.TCPConn) {
-	fileDes, err := os.Open(filePath, os.O_RDONLY|os.O_CREATE, 0666)
+	fileDes, err := os.OpenFile(filePath, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
 		log.Infof("Unable to create local file: %s", err)
 		return

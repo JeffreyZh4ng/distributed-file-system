@@ -188,7 +188,7 @@ func TcpFileListener(localFiles *LocalFiles) {
 		json.Unmarshal(buffer[:readLen], &fileName)
 
 		localFilePath := PARENT_DIR + "/" + fileName
-		fileDes, err := os.Open(localFilePath, os.O_RDONLY|os.O_CREATE, 0666)
+		fileDes, err := os.OpenFile(localFilePath, os.O_RDONLY|os.O_CREATE, 0666)
 		if err != nil {
 			log.Infof("Unable to open local file: %s", err)
 			continue
