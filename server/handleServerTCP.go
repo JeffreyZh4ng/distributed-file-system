@@ -91,10 +91,25 @@ func TcpClientListener(membership *Membership, infoTransfer map[int][]string) {
 }
 
 func handleGetRequest(membership *Membership, request *Request) {
+	startTime := time.Now().UnixNano() / int64(time.Millisecond)
+	elapsedTime := 0
+	ticker := time.NewTicker(1000 * time.Millisecond)
 
-	// Wait three seconds before removing the request from the pending list
-	timer := time.NewTimer(3 * time.Second)
-	<-timer.C
+	for {
+		<-ticker.C
+
+		if _, contains := infoTransfer[requestID]; contains {
+			break
+		}
+
+		currTime := time.Now().UnixNano() / int64(time.Millisecond)
+		if currTime-startTime > REQUEST_TIMEOUT {
+			tcpAddr, _ := net.ResolveTCPAddr("tcp", request.SrcHost+":"+FILE_PORT)
+			socket, _ := net.DialTCP("tcp", nil, tcpAddr)
+			socket.write([]byte("fail"))
+			break
+		}
+	}
 
 	for i := 0; i < len(membership.Pending); i++ {
 		if membership.Pending[i].ID == request.ID {

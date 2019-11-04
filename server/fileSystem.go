@@ -108,7 +108,8 @@ func serverHandleGet(membership *Membership, localFiles *LocalFiles, request *Re
 		if socket == nil {
 			return false
 		}
-
+		socket.Write([]byte("pass"))
+		
 		// Open and send the file from the cs-425-mp3 directory
 		localFilePath := "../" + PARENT_DIR + "/" + request.FileName
 		file, err := os.Open(localFilePath)
