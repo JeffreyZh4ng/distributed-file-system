@@ -1,6 +1,8 @@
 package server
 
 import (
+	"ioutil"
+	"math/rand"
 	"net"
 	"os"
 	"time"
@@ -13,14 +15,13 @@ type LocalFiles struct {
 	UpdateTimes map[string]int64
 }
 
-type NodeMessage struct {
+type PendingResponse struct {
 	RequestID int
 	Timestamp int64
 	NodeList []string
 }
 
 var PARENT_DIR string = "nodeFiles"
-var FILE_PORT_NUM string = "5000"
 var NODE_PORT_NUM string = "6000"
 var NUM_REPLICAS int = 4
 
@@ -60,6 +61,7 @@ func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
 
 		// Check for any failed nodes
 		findFailedNodes(membership, localFiles)
+		// Clean up completed requests here
 	}
 }
 
@@ -69,13 +71,22 @@ func serverHandlePut(membership *Membership, localFiles *LocalFiles, request *Re
 	
 	// Only thing we do for the put when the node is the fileMaster is send the info to leader
 	if contains && fileGroup[0] == hostName { 
-		leaderHostName := membership.List[0]
-		messageToLeader := NodeMessage{
+		pendingResponse := PendingResponse{
 			RequestID: request.RequestID,
 			Timestamp: localFiles.UpdateTimes[request.FileName],
 			NodeList: fileGroup,
 		}
-		contactNode(leaderHostName, messageToLeader)
+		
+		jsonPending, _ := json.Marshal(pendingResponse)
+		nodeMessage := server.NodeMessage{
+			MsgType: "PendingPut",
+			FileName: "",
+			SrcHost: "",
+			Data: jsonPending,
+		}
+
+		leaderHostName := membership.List[0]
+		contactNode(leaderHostName, nodeMessage)
 		return true
 	}
 
@@ -88,34 +99,22 @@ func serverHandleGet(membership *Membership, localFiles *LocalFiles, request *Re
 
 	// If the current node contains the file and the node is the file master, send the file
 	if contains && fileGroup[0] == hostName {
-		socket := establishTCP(request.SrcHost)
-		if socket == nil {
-			return false
-		}
-		defer socket.Close()
-
-		// Open and send the file from the cs-425-mp3 directory
-		localFilePath := "../" + PARENT_DIR + "/" + request.FileName
-		file, err:= os.Open(localFilePath)
-		defer file.Close()
-		if err != nil {
-			log.Infof("Unable to open local file: %s", err)
-			return false
-		}
-		
-		_, err := io.Copy(socket, file)
-		if err != nil {
-			log.Info("Server could not write the fileto the client!")
-			return false
-		}
-
-		leaderHostName := membership.List[0]
-		messageToLeader := NodeMessage{
+		pendingResponse := PendingResponse{
 			RequestID: request.RequestID,
 			Timestamp: 0,
-			NodeList: []string,
+			NodeList: fileGroup,
 		}
-		contactNode(leaderHostName, messageToLeader)
+		
+		jsonPending, _ := json.Marshal(pendingResponse)
+		nodeMessage := server.NodeMessage{
+			MsgType: "PendingGet",
+			FileName: "",
+			SrcHost: "",
+			Data: jsonPending,
+		}
+		
+		leaderHostName := membership.List[0]
+		contactNode(leaderHostName, nodeMessage)
 		return true
 	}
 
@@ -133,13 +132,22 @@ func serverHandleDelete(membership *Membership, localFiles *LocalFiles, request 
 			return false
 		}
 
-		leaderHostName := membership.List[0]
-		messageToLeader := NodeMessage{
+		pendingResponse := PendingResponse{
 			RequestID: request.RequestID,
 			Timestamp: 0,
 			NodeList: []string,
 		}
-		contactNode(leaderHostName, messageToLeader)
+		
+		jsonPending, _ := json.Marshal(pendingResponse)
+		nodeMessage := server.NodeMessage{
+			MsgType: "PendingDelete",
+			FileName: "",
+			SrcHost: "",
+			Data: jsonPending,
+		}
+		
+		leaderHostName := membership.List[0]
+		contactNode(leaderHostName, nodeMessage)
 		return true
 	}
 	
@@ -160,20 +168,22 @@ func serverHandleLs(membership *Membership, localFiles *LocalFiles, request *Req
 
 		// Send the string to the client
 		fileGroupString := strings.Join(fileGroup, ",")
-		jsonMessage, _ := json.Marshal(fileGroupString)
-		_, err := socket.Write(jsonMessage)
-		if err != nil {
-			log.Infof("Could not write list to client!")
-			return false
+		pendingResponse := PendingResponse{
+			RequestID: request.RequestID,
+			Timestamp: 0,
+			NodeList: fileGroupString,
+		}
+
+		jsonPending, _ := json.Marshal(pendingResponse)
+		nodeMessage := server.NodeMessage{
+			MsgType: "PendingLs",
+			FileName: "",
+			SrcHost: "",
+			Data: jsonPending,
 		}
 		
 		leaderHostName := membership.List[0]
-		messageToLeader := NodeMessage{
-			RequestID: request.RequestID,
-			Timestamp: 0,
-			NodeList: []string,
-		}
-		contactNode(leaderHostName, messageToLeader)
+		contactNode(leaderHostName, nodeMessage)
 		return true
 	}
 
@@ -202,7 +212,7 @@ func contactNode(nodeHostName string, leaderMessage *NodeMessage) {
 
 // Helper that establishes a TCP connection
 func establishTCP(hostname string) (*net.TCPConn) {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", hostname + ":" + FILE_PORT_NUM)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", hostname + ":" + NODE_PORT_NUM)
 	if err != nil {
 		log.Info("Could not resolve the hostname!")
 		return nil
@@ -237,15 +247,46 @@ func findFailedNodes(membership *Membership, localFiles *LocalFiles) {
 
 		// If the current node is the lowest ID node that has not filed, reshard
 		if runningNodes[0] == hostname {
-			reshardFiles(membership, runningNodes)
+			reshardFiles(membership, runningNodes, fileName)
 		}
 	}
 }
 
-func reshardFiles(membership *Membership, runningNodes []string) {
-	// Pick a random node in the current membership list that does not already have the file
+func reshardFiles(membership *Membership, runningNodes []string, fileName string) {
 	for i := 0; i < NUM_REPLICAS - len(runningNodes); i++ {
-		// Send a TCP request to the node that were duplicating the file to.
-		// Wait for a response from that node to ensure that all nodeGroup lists have been updated
+		
+		// Disgusting random function that will loop until it finds a node not in the runningNodes list
+		randIndex := 0
+		for {
+			randIndex = math.Intn(len(membership.List))
+			nodeName := membership.List[randIndex]
+			for i := 0; i < len(runningNodes); i++ {
+				if runningNodes[i] == nodeName {
+					continue
+				}
+			}
+
+			break
+		}
+
+		loadedFile := ioutil.ReadFile(PARENT_DIR + "/" + fileName)
+		nodeMessage := NodeMessage{
+			MsgType: "ReshardRequest",
+			FileName: file,
+			SrcHost: localHost,
+			Data: loadedFile,
+		}
+
+		randomNode := membership.List[randIndex]
+		socket := establishTCP(randomNode)
+		if socket == nil {
+			log.Info("Could not establish TCP while resharding")
+		}
+		
+		jsonMessage, _ := json.Marshal(nodeMessage)
+		_, err := socket.Write(jsonMessage)
+		if err != nil {
+			log.Info("Could not write file while resharding")
+		}
 	}
 }
