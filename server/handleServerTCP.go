@@ -7,8 +7,6 @@ type NodeMessage struct {
 	MsgType   string,
 	FileName  string,
 	SrcHost   string,
-	Timestamp int64,
-	RequestID int,
 	Data      []byte,
 }
 
