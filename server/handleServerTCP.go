@@ -96,7 +96,11 @@ func handleRequest(membership *Membership, request *Request, infoTransfer map[in
 
 		currTime := time.Now().UnixNano() / int64(time.Millisecond)
 		if currTime-startTime > REQUEST_TIMEOUT {
-			tcpAddr, _ := net.ResolveTCPAddr("tcp", request.SrcHost+":"+FILE_PORT)
+			port := CLIENT_PORT
+			if request.Type == "get" {
+				port = SERVER_PORT
+			}
+			tcpAddr, _ := net.ResolveTCPAddr("tcp", request.SrcHost+":"+port)
 			socket, _ := net.DialTCP("tcp", nil, tcpAddr)
 			
 			// Special case where timeout is different for the get request
