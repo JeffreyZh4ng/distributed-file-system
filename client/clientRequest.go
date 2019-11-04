@@ -1,27 +1,34 @@
 package client
 
 import (
-	log "github.com/sirupsen/logrus"
-	"os"
-	"net"
-	"io"
+	"cs-425-mp3/server"
 	"encoding/json"
-	"sync"
+	log "github.com/sirupsen/logrus"
+	"io"
+	"net"
+	"os"
 	"strconv"
+	"sync"
+	"time"
 )
 
-var CLIENT_MSG_PORT string = "23333" // For message 
+var CLIENT_MSG_PORT string = "23333"    // For message
 var FILE_TRANSFER_PROT string = "43991" // For file
 var FILE_ROOT string = "/home/zx27/SDFS/"
 
-type FileMsg struct{
-	MsgType string
+type NodeMessage struct {
+	MsgType  string
 	FileName string
-	Data []string
-	SrcHost string
+	SrcHost  string
+	Data     []byte
+}
+type ClientRequest struct {
+	MsgType  string
+	FileName string
+	SrcHost  string
 }
 
-func initRequest(requestType string, fileName string) *net.TCPConn{
+func initRequest(requestType string, fileName string) *net.TCPConn {
 	localHost, _ := os.Hostname()
 
 	for i := 1; i <= 10; i++ {
@@ -33,11 +40,11 @@ func initRequest(requestType string, fileName string) *net.TCPConn{
 			log.Infof("Could not connect to %s, try next", connectName)
 			continue
 		}
-		lsmsg := FileMsg{
-			MsgType: requestType,
+		lsmsg := NodeMessage{
+			MsgType:  requestType,
 			FileName: fileName,
-			Data: []string{},
-			SrcHost: localHost,
+			SrcHost:  localHost,
+			Data:     []byte{},
 		}
 		lsmsgbt, err := json.Marshal(lsmsg)
 		clientRequestConn.Write(lsmsgbt)
@@ -47,126 +54,143 @@ func initRequest(requestType string, fileName string) *net.TCPConn{
 	return nil
 }
 
-func ClientGet(args []string) {
+func ClientDel(args []string) {
 	fileName := args[0]
 	clientRequestConn := initRequest("ls_init", fileName)
-	localFilePath := FILE_ROOT + args[1]
-	 
+	clientRequestConn.Close()
+}
+
+func ClientLs(args []string) {
+	fileName := args[0]
+	clientRequestConn := initRequest("ls_init", fileName)
+	// Make ls request message sent to leader
+
+	// Waiting for leader response
 	msgbuf := make([]byte, 1024)
 	msglen, err := clientRequestConn.Read(msgbuf)
 	if err != nil {
 		log.Infof("TCP read error %s", err)
 		return
-	}	
+	}
+	newNodeMessage := NodeMessage{}
+	err = json.Unmarshal(msgbuf[:msglen], &newNodeMessage)
+	if err != nil {
+		log.Infof("Unable to decode put respond msg %s", err)
+		return
+	}
+	log.Info(newNodeMessage.Data)
+	clientRequestConn.Close()
+}
+
+func ClientGet(args []string) {
+	fileName := args[0]
+
+	clientRequestConn := initRequest("ls_init", fileName)
+	localFilePath := FILE_ROOT + args[1]
+	go waitingforFile(localFilePath)
+
+	msgbuf := make([]byte, 1024)
+	clientRequestConn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	msglen, err := clientRequestConn.Read(msgbuf)
+	if err != nil {
+		log.Infof("File is not available")
+		return
+	}
+	newNodeMessage := NodeMessage{}
+	err = json.Unmarshal(msgbuf[:msglen], &newNodeMessage)
+	if err != nil {
+		log.Infof("Unable to decode put respond msg %s", err)
+		return
+	}
+	defer clientRequestConn.Close()
+
+}
+
+func ClientPut(args []string) {
+	fileName := args[1]
+	clientRequestConn := initRequest("ls_init", fileName)
+	localHost, _ := os.Hostname()
+	localFilePath := FILE_ROOT + args[0]
+
+	// Waiting for leader response
+	msgbuf := make([]byte, 1024)
+	msglen, err := clientRequestConn.Read(msgbuf)
+	if err != nil {
+		log.Infof("TCP read error %s", err)
+		return
+	}
+	newNodeMessage := NodeMessage{}
+	err = json.Unmarshal(msgbuf[:msglen], &newNodeMessage)
+	if err != nil {
+		log.Infof("Unable to decode put respond msg %s", err)
+		return
+	}
+	log.Info(newNodeMessage.Data)
+	clientRequestConn.Close()
+	handleLeaderResponse(newNodeMessage, fileName, localHost, localFilePath)
+	return
+
+}
+
+func ClientDel(args []string) {
+	fileName := args[0]
+	clientRequestConn := initRequest("ls_init", fileName)
+	clientRequestConn.Close()
+}
+
+func ClientLs(args []string) {
+	fileName := args[0]
+	clientRequestConn := initRequest("ls_init", fileName)
+	// Make ls request message sent to leader
+
+	// Waiting for leader response
+	msgbuf := make([]byte, 1024)
+	msglen, err := clientRequestConn.Read(msgbuf)
+	if err != nil {
+		log.Infof("TCP read error %s", err)
+		return
+	}
 	newFileMsg := FileMsg{}
 	err = json.Unmarshal(msgbuf[:msglen], &newFileMsg)
 	if err != nil {
 		log.Infof("Unable to decode put respond msg %s", err)
 		return
 	}
-	if newFileMsg.MsgType == "get_ok"{ // fetch file from the source 
-		fConn, err := establishTCP(newFileMsg.Data[0], FILE_TRANSFER_PROT)
-		if err != nil{
-			log.Infof("Could not connect to file source, %s", err)
-			return
-		}
-		TCPFileReceiver(localFilePath, fConn)
-		fConn.Close()
-	}else{
-		log.Infof("The file is unavailable")
-		return
-	}
-	clientRequestConn.Close()
-
-
-}
-
-func ClientPut(args []string){
-	fileName := args[1]
-	clientRequestConn := initRequest("ls_init", fileName)
-	localHost, _ := os.Hostname()
-	localFilePath := FILE_ROOT + args[0]
-		
-		// Waiting for leader response
-		msgbuf := make([]byte, 1024)
-		msglen, err := clientRequestConn.Read(msgbuf)
-		if err != nil {
-			log.Infof("TCP read error %s", err)
-			return
-		}	
-		newFileMsg := FileMsg{}
-		err = json.Unmarshal(msgbuf[:msglen], &newFileMsg)
-		if err != nil {
-			log.Infof("Unable to decode put respond msg %s", err)
-			return
-		}
-		log.Info(newFileMsg.Data)
-		clientRequestConn.Close()
-		handleLeaderResponse(newFileMsg, fileName, localHost, localFilePath)	
-		return
-
-}
-
-func ClientDel(args []string){
-	fileName := args[0]
-	clientRequestConn := initRequest("ls_init", fileName)
+	log.Info(newFileMsg.Data)
 	clientRequestConn.Close()
 }
-
-func ClientLs(args []string){
-	fileName := args[0]
-	clientRequestConn := initRequest("ls_init", fileName)
-		// Make ls request message sent to leader
-
-		// Waiting for leader response
-		msgbuf := make([]byte, 1024)
-		msglen, err := clientRequestConn.Read(msgbuf)
-		if err != nil {
-			log.Infof("TCP read error %s", err)
-			return
-		}	
-		newFileMsg := FileMsg{}
-		err = json.Unmarshal(msgbuf[:msglen], &newFileMsg)
-		if err != nil {
-			log.Infof("Unable to decode put respond msg %s", err)
-			return
-		}
-		log.Info(newFileMsg.Data)
-		clientRequestConn.Close()
-}
-
 
 // For put and ls
-func handleLeaderResponse(responseMsg FileMsg, fileName string, localHost string, localFilePath string){
-	requestMsgTofileMaster := FileMsg{}
-	switch responseMsg.MsgType{
+func handleLeaderResponse(responseMsg NodeMessage, fileName string, localHost string, localFilePath string) {
+	requestMsgTofileMaster := NodeMessage{}
+	switch responseMsg.MsgType {
 	case "insert_confirm": // There is no file in SDFD now
-		requestMsgTofileMaster = FileMsg{
-			MsgType: "put",
+		requestMsgTofileMaster = NodeMessage{
+			MsgType:  "put",
 			FileName: fileName,
-			Data: responseMsg.Data,
-			SrcHost: localHost,
+			Data:     responseMsg.Data,
+			SrcHost:  localHost,
 		}
 	case "update_confirm": // Client will send update request to fileMaster
-		requestMsgTofileMaster = FileMsg{
-			MsgType: "put",
+		requestMsgTofileMaster = NodeMessage{
+			MsgType:  "put",
 			FileName: fileName,
-			Data: responseMsg.Data,
-			SrcHost: localHost,
+			Data:     responseMsg.Data,
+			SrcHost:  localHost,
 		}
 	default:
 		log.Infof("No reply from leader, fail to put")
 		return
 	}
 	var connectName string
-	if len(responseMsg.Data) > 0{
+	if len(responseMsg.Data) > 0 {
 		connectName = responseMsg.Data[0]
-	}else{
+	} else {
 		log.Infof("No node to contact")
 		return
 	}
 	clientRequestConn, err := establishTCP(connectName, CLIENT_MSG_PORT)
-	if err != nil{
+	if err != nil {
 		log.Infof("Could not connect to %s, fail to put", connectName)
 		return
 	}
@@ -179,40 +203,39 @@ func handleLeaderResponse(responseMsg FileMsg, fileName string, localHost string
 	if err != nil {
 		log.Infof("TCP read error %s", err)
 		return
-	}	
-	newFileMsg := FileMsg{}
-	err = json.Unmarshal(msgbuf[:msglen], &newFileMsg)
+	}
+	newNodeMessage := NodeMessage{}
+	err = json.Unmarshal(msgbuf[:msglen], &newNodeMessage)
 	if err != nil {
 		log.Infof("Decode error from master %s", err)
 		return
 	}
-	if newFileMsg.MsgType == "put_prompt_ok"{
-		log.Info(newFileMsg.Data)
+	if newNodeMessage.MsgType == "put_prompt_ok" {
+		log.Info(newNodeMessage.Data)
 
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go establishTCPFileServer(&wg, localFilePath, len(newFileMsg.Data))
-		confirmMsg := FileMsg{
-			MsgType: "put_confirmation",
+		go establishTCPFileServer(&wg, localFilePath, len(newNodeMessage.Data))
+		confirmMsg := NodeMessage{
+			MsgType:  "put_confirmation",
 			FileName: fileName,
-			Data: []string{},
-			SrcHost: localHost,
+			Data:     []string{},
+			SrcHost:  localHost,
 		}
 		putconbt, _ := json.Marshal(confirmMsg)
 		clientRequestConn.Write(putconbt)
 		clientRequestConn.Close()
 		wg.Wait()
-	}else{
+	} else {
 		log.Infof("Write Confilict!")
 		return
 	}
 
 }
 
-
 // Helper that establishes a TCP connection
 func establishTCP(hostname string, portNumber string) (*net.TCPConn, error) {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", hostname + ":" + portNumber)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", hostname+":"+portNumber)
 	if err != nil {
 		log.Info("Could not resolve the hostname!")
 		return nil, err
@@ -227,8 +250,8 @@ func establishTCP(hostname string, portNumber string) (*net.TCPConn, error) {
 	return socket, err
 }
 
-// Concurrency sending: 
-func establishTCPFileServer(wg *sync.WaitGroup, filePath string, numReplicas int){
+// Concurrency sending:
+func establishTCPFileServer(wg *sync.WaitGroup, filePath string, numReplicas int) {
 	tcpAddr, err := net.ResolveTCPAddr("tcp", ":"+FILE_TRANSFER_PROT)
 	flistener, err := net.ListenTCP("tcp", tcpAddr)
 	if err != nil {
@@ -237,8 +260,8 @@ func establishTCPFileServer(wg *sync.WaitGroup, filePath string, numReplicas int
 	}
 	log.Infof("Listen on %s!", FILE_TRANSFER_PROT)
 
-	for i := 0; i < numReplicas; i++{
-		rdfile, err:= os.Open(filePath)
+	for i := 0; i < numReplicas; i++ {
+		rdfile, err := os.Open(filePath)
 		if err != nil {
 			log.Infof("Unable to open local file: %s", err)
 			return
@@ -250,12 +273,12 @@ func establishTCPFileServer(wg *sync.WaitGroup, filePath string, numReplicas int
 		}
 		io.Copy(destConn, rdfile)
 		destConn.Close()
-		rdfile.Close()	
+		rdfile.Close()
 	}
 	wg.Done()
 }
 
-func TCPFileReceiver(filePath string, readConn *net.TCPConn){
+func TCPFileReceiver(filePath string, readConn *net.TCPConn) {
 	mkfile, err := os.Create(filePath)
 	if err != nil {
 		log.Infof("Unable to create local file: %s", err)
@@ -267,4 +290,44 @@ func TCPFileReceiver(filePath string, readConn *net.TCPConn){
 		return
 	}
 	mkfile.Close()
+}
+
+func waitingforFile(filePath string) {
+	tcpAddr := net.ResolveTCPAddr("tcp", ":"+FILE_TRANSFER_PROT)
+	l, err := net.ListenTCP("tcp", tcpAddr)
+	defer l.Close()
+	startTime := time.Now().UnixNano() / int64(time.Millisecond)
+	for {
+		curTime := time.Now().UnixNano() / int64(time.Millisecond)
+		if curTime-startTime > 5000 {
+			log.Infof("File unavailable")
+			break
+		}
+		readConn, err := l.AcceptTCP()
+
+		mkfile, err := os.Create(filePath)
+		if err != nil {
+			log.Infof("Unable to create local file: %s", err)
+			return
+		}
+		io.Copy(mkfile, readConn)
+		if err != nil {
+			log.Infof("Unable to create local file: %s", err)
+			return
+		}
+		mkfile.Close()
+	}
+}
+
+func sendFile(fileName string, destConn *new.TCPConn) {
+	localHost, _ := os.Hostname()
+	loadedFile := ioutil.ReadFile(PARENT_DIR + "/" + fileName)
+	nodeMessage := server.NodeMessage{
+		MsgType:  "File",
+		FileName: fileName,
+		SrcHost:  localHost,
+		Data:     loadedFile,
+	}
+	byteSent, _ := json.Marshal(nodeMessage)
+	destConn.Write(byteSent)
 }

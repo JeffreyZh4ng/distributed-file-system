@@ -13,7 +13,7 @@ import (
 var PORT_NUM string = "4000"
 
 // Helper method that will connect to nodes based on if it is the introducer or not
-func serverSetup() (*server.Membership, *net.UDPConn) {
+func serverSetup() (*server.Membership, *server.FileSystem, *net.UDPConn) {
 	hostname, _ := os.Hostname()
 	addr, err := net.ResolveUDPAddr("udp", hostname+":"+PORT_NUM)
 	if err != nil {
@@ -38,18 +38,23 @@ func serverSetup() (*server.Membership, *net.UDPConn) {
 		Pending:   requests,
 	}
 
+	localFiles := &server.LocalFiles{
+		Files: map[string][]string,
+		UpdateTimes: map[string]int64
+	}
+
 	server.ServerJoin(membership)
-	return membership, ser
+	return membership, localFiles, ser
 }
 
 func main() {
 	hostname, _ := os.Hostname()
-	membership, ser := serverSetup()
+	membership, localFiles, ser := serverSetup()
 
 	// Start a goroutine to handle sending out heartbeats
 	go server.HeartbeatManager(membership)
 	go server.ListenForUDP(ser, membership)
-	go server.FileSystemManager(membership)
+	go server.FileSystemManager(membership, localFiles)
 
 	for {
 		reader := bufio.NewReader(os.Stdin)

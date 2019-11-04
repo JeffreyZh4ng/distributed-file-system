@@ -1,8 +1,8 @@
 package server
 
 import (
-	log "github.com/sirupsen/logrus"
 	"encoding/json"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"os"
 	"sort"
@@ -21,14 +21,14 @@ type Membership struct {
 	SrcHost string
 	Data    map[string]int64
 	List    []string
-	
+
 	LeaderUpdateTime int64
-	Pending []*Request
+	Pending          []*Request
 }
 
 // Every heartbeat will also contain a list of all files in the system
 type Request struct {
-	ID 	 int
+	ID       int
 	Type     string
 	SrcHost  string
 	FileName string
@@ -40,7 +40,7 @@ func ServerJoin(membership *Membership) {
 	if hostname != INTRODUCER_NODE {
 		log.Info("Writing to the introducer!")
 		writeMembershipList(membership, INTRODUCER_NODE)
-	
+
 	} else {
 		log.Info("Introducer attempting to reconnect to any node!")
 		for i := 2; i <= 10; i++ {
@@ -162,7 +162,7 @@ func ListenForUDP(ser *net.UDPConn, membership *Membership) {
 		if readLen == 0 {
 			continue
 		}
-		
+
 		newMembership := Membership{}
 		err := json.Unmarshal(buffer[:readLen], &newMembership)
 		if err != nil {
@@ -189,16 +189,16 @@ func processNewMembershipList(membership *Membership, newMembership *Membership)
 			membership.List = append(membership.List, nextHostname)
 			sort.Strings(membership.List)
 
-		// If the time in the new list is 0, the node left the network
+			// If the time in the new list is 0, the node left the network
 		} else if newMembership.Data[nextHostname] == 0 {
 			membership.Data[nextHostname] = 0
 
-		// If the new membership has a more recent time, update it
+			// If the new membership has a more recent time, update it
 		} else if pingTime < newMembership.Data[nextHostname] {
 			membership.Data[nextHostname] = newMembership.Data[nextHostname]
 
 			// If the hostname is not in the list but it's in the data map,
-			// it was removed from the list because it faile or left, and 
+			// it was removed from the list because it faile or left, and
 			// we just recieved a new time indicating that it's rejoining.
 			currTime := time.Now().UnixNano() / int64(time.Millisecond)
 			if findHostnameIndex(membership, nextHostname) >= len(membership.List) &&

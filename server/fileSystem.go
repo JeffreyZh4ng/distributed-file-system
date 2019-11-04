@@ -1,35 +1,38 @@
 package server
 
 import (
+	"encoding/json"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"net"
 	"os"
-	"time"
 	"strings"
+	"time"
 )
 
 // Local datastore that keeps track of the other nodes that have the same files
 type LocalFiles struct {
-	Files map[string][]string
+	Files       map[string][]string
 	UpdateTimes map[string]int64
 }
 
 type PendingResponse struct {
-	ID int
+	ID        int
 	Timestamp int64
-	NodeList []string
+	NodeList  []string
 }
 
 var PARENT_DIR string = "nodeFiles"
-var NODE_PORT_NUM string = "6000"
+var SERVER_PORT string = "7000"
 var FINISHED_REQUEST_TTL int = 5000
 var NUM_REPLICAS int = 4
 
 // go routine that will handle requests and resharding of files from failed nodes
 func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
 	hostname, _ := os.Hostname()
-	completedRequests := map[int]int64
+	completedRequests := make(map[int]int64)
 	ticker := time.NewTicker(1000 * time.Millisecond)
 
 	for {
@@ -37,7 +40,7 @@ func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
 
 		// Check if there are any requests in the membership list
 		for _, request := range membership.Pending {
-			
+
 			// If the request is in the complete list then continue
 			if _, contains := completedRequests[request.ID]; contains {
 				continue
@@ -46,7 +49,7 @@ func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
 			requestCompleted := false
 			switch request.Type {
 			case "put":
-				requestCompleted = serverHandlePut(membership, localFiles, request)	
+				requestCompleted = serverHandlePut(membership, localFiles, request)
 			case "get":
 				requestCompleted = serverHandleGet(membership, localFiles, request)
 			case "delete":
@@ -70,24 +73,24 @@ func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
 	}
 }
 
-func serverHandlePut(membership *Membership, localFiles *LocalFiles, request *Request) (bool) {
+func serverHandlePut(membership *Membership, localFiles *LocalFiles, request *Request) bool {
 	hostname, _ := os.Hostname()
 	fileGroup, contains := localFiles.Files[request.FileName]
-	
+
 	// Only thing we do for the put when the node is the fileMaster is send the info to leader
-	if contains && fileGroup[0] == hostName { 
+	if contains && fileGroup[0] == hostname {
 		pendingResponse := PendingResponse{
-			ID: request.ID,
+			ID:        request.ID,
 			Timestamp: localFiles.UpdateTimes[request.FileName],
-			NodeList: fileGroup,
+			NodeList:  fileGroup,
 		}
-		
+
 		jsonPending, _ := json.Marshal(pendingResponse)
-		nodeMessage := server.NodeMessage{
-			MsgType: "PendingPut",
+		nodeMessage := NodeMessage{
+			MsgType:  "PendingPut",
 			FileName: "",
-			SrcHost: "",
-			Data: jsonPending,
+			SrcHost:  "",
+			Data:     jsonPending,
 		}
 
 		leaderHostName := membership.List[0]
@@ -98,34 +101,34 @@ func serverHandlePut(membership *Membership, localFiles *LocalFiles, request *Re
 	return contains
 }
 
-func serverHandleGet(membership *Membership, localFiles *LocalFiles, request *Request) (bool) {
+func serverHandleGet(membership *Membership, localFiles *LocalFiles, request *Request) bool {
 	hostname, _ := os.Hostname()
 	fileGroup, contains := localFiles.Files[request.FileName]
 
 	// If the current node contains the file and the node is the file master, send the file
 	if contains && fileGroup[0] == hostName {
-	
+
 		// Open and send the file from the cs-425-mp3 directory
 		localFilePath := "../" + PARENT_DIR + "/" + request.FileName
-		file, err:= os.Open(localFilePath)
+		file, err := os.Open(localFilePath)
 		if err != nil {
 			log.Infof("Unable to open local file: %s", err)
 			return false
 		}
-		
+
 		_, err := io.Copy(socket, file)
 		if err != nil {
 			log.Info("Server could not write the fileto the client!")
 			return false
 		}
-		
+
 		return true
 	}
 
 	return contains
 }
 
-func serverHandleDelete(membership *Membership, localFiles *LocalFiles, request *Request) (bool) {
+func serverHandleDelete(membership *Membership, localFiles *LocalFiles, request *Request) bool {
 	if _, contains := localFiles.Files[request.FileName]; contains {
 		delete(localFiles.Files, request.FileName)
 		delete(localFiles.UpdateTimes, request.FileName)
@@ -136,29 +139,29 @@ func serverHandleDelete(membership *Membership, localFiles *LocalFiles, request 
 			return false
 		}
 
-		pendingResponse := PendingResponse{
-			ID: request.ID,
+		pendingResponse := &PendingResponse{
+			ID:        request.ID,
 			Timestamp: 0,
-			NodeList: []string,
+			NodeList:  []string{},
 		}
-		
+
 		jsonPending, _ := json.Marshal(pendingResponse)
-		nodeMessage := server.NodeMessage{
-			MsgType: "PendingDelete",
+		nodeMessage := NodeMessage{
+			MsgType:  "PendingDelete",
 			FileName: "",
-			SrcHost: "",
-			Data: jsonPending,
+			SrcHost:  "",
+			Data:     jsonPending,
 		}
-		
+
 		leaderHostName := membership.List[0]
 		contactNode(leaderHostName, nodeMessage)
 		return true
 	}
-	
+
 	return false
 }
 
-func serverHandleLs(membership *Membership, localFiles *LocalFiles, request *Request) (bool) {
+func serverHandleLs(membership *Membership, localFiles *LocalFiles, request *Request) bool {
 	hostname, _ := os.Hostname()
 	fileGroup, contains := fileInfo[request.FileName]
 
@@ -172,19 +175,19 @@ func serverHandleLs(membership *Membership, localFiles *LocalFiles, request *Req
 		// Send the string to the client
 		fileGroupString := strings.Join(fileGroup, ",")
 		pendingResponse := PendingResponse{
-			ID: request.ID,
+			ID:        request.ID,
 			Timestamp: 0,
-			NodeList: fileGroupString,
+			NodeList:  fileGroupString,
 		}
 
 		jsonPending, _ := json.Marshal(pendingResponse)
 		nodeMessage := server.NodeMessage{
-			MsgType: "PendingLs",
+			MsgType:  "PendingLs",
 			FileName: "",
-			SrcHost: "",
-			Data: jsonPending,
+			SrcHost:  "",
+			Data:     jsonPending,
 		}
-		
+
 		leaderHostName := membership.List[0]
 		contactNode(leaderHostName, nodeMessage)
 		return true
@@ -194,9 +197,9 @@ func serverHandleLs(membership *Membership, localFiles *LocalFiles, request *Req
 }
 
 // Helper method that will contact a specified node and send a node message
-func contactNode(nodeHostName string, leaderMessage *NodeMessage) {
+func contactNode(nodeHostName string, leaderMessage NodeMessage) {
 	leaderHostName := membership.List[0]
-	tcpAddr, err := net.ResolveTCPAddr("tcp", leaderHostName + ":" + NODE_PORT_NUM)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", leaderHostName+":"+SERVER_PORT)
 	if err != nil {
 		log.Info("Could not resolve the hostname!")
 		return
@@ -214,8 +217,8 @@ func contactNode(nodeHostName string, leaderMessage *NodeMessage) {
 }
 
 // Helper that establishes a TCP connection
-func establishTCP(hostname string) (*net.TCPConn) {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", hostname + ":" + NODE_PORT_NUM)
+func establishTCP(hostname string) *net.TCPConn {
+	tcpAddr, err := net.ResolveTCPAddr("tcp", hostname+":"+SERVER_PORT)
 	if err != nil {
 		log.Info("Could not resolve the hostname!")
 		return nil
@@ -231,8 +234,8 @@ func establishTCP(hostname string) (*net.TCPConn) {
 }
 
 func findFailedNodes(membership *Membership, localFiles *LocalFiles) {
-	hostname, _ := os.Hostname()	
-	currentFiles := map[string]int
+	hostname, _ := os.Hostname()
+	currentFiles := map[string]int{}
 	for _, host := range membership.List {
 		currentFiles[host] = 0
 	}
@@ -242,7 +245,7 @@ func findFailedNodes(membership *Membership, localFiles *LocalFiles) {
 
 		runningNodes := []string{}
 		for _, node := range fileGroup {
-			
+
 			if _, contains := currentFiles[node]; !contains {
 				runningNodes = append(runningNodes, node)
 			}
@@ -256,8 +259,8 @@ func findFailedNodes(membership *Membership, localFiles *LocalFiles) {
 }
 
 func reshardFiles(membership *Membership, runningNodes []string, fileName string) {
-	for i := 0; i < NUM_REPLICAS - len(runningNodes); i++ {
-		
+	for i := 0; i < NUM_REPLICAS-len(runningNodes); i++ {
+
 		// Disgusting random function that will loop until it finds a node not in the runningNodes list
 		randIndex := 0
 		for {
@@ -274,10 +277,10 @@ func reshardFiles(membership *Membership, runningNodes []string, fileName string
 
 		loadedFile := ioutil.ReadFile(PARENT_DIR + "/" + fileName)
 		nodeMessage := NodeMessage{
-			MsgType: "ReshardRequest",
+			MsgType:  "ReshardRequest",
 			FileName: file,
-			SrcHost: localHost,
-			Data: loadedFile,
+			SrcHost:  localHost,
+			Data:     loadedFile,
 		}
 
 		randomNode := membership.List[randIndex]
@@ -285,7 +288,7 @@ func reshardFiles(membership *Membership, runningNodes []string, fileName string
 		if socket == nil {
 			log.Info("Could not establish TCP while resharding")
 		}
-		
+
 		jsonMessage, _ := json.Marshal(nodeMessage)
 		_, err := socket.Write(jsonMessage)
 		if err != nil {
