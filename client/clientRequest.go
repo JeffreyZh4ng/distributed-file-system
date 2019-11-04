@@ -85,7 +85,7 @@ func ClientGet(args []string) {
 		return
 	}
 	
-	filePath := "../" + PARENT_DIR + "/" + args[1]
+	filePath := PARENT_DIR + "/" + args[1]
 	writeFile(filePath, readConn)
 }
 
