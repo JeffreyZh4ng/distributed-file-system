@@ -45,6 +45,7 @@ func initRequest(requestType string, fileName string) {
 
 		jsonRequest, _ := json.Marshal(clientRequest)
 		socket.Write(jsonRequest)
+		return
 	}
 	
 	log.Fatal("Server could not reach any server!")
@@ -103,7 +104,8 @@ func ClientPut(args []string) {
 
 	var putNodes []string
 	json.Unmarshal(buffer[:readLen], &putNodes)
-	
+
+	log.Infof("Nodes that the client is writing to %s", putNodes)	
 	localFilePath := "../" + PARENT_DIR + "/" + args[0]
 	file, err := os.Open(localFilePath)
 	if err != nil {
