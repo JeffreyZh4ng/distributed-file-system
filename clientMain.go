@@ -4,13 +4,13 @@ import (
 	log "github.com/sirupsen/logrus"
 	"cs-425-mp3/client"
 	"os"
+
 )
 
 func parseArgs() (string, []string) {
 	if len(os.Args) < 3 {
 		log.Fatal("User did not specify enough arguments")
 	}
-
 	command := os.Args[1]
 	args := os.Args[2:]
 	
@@ -20,13 +20,13 @@ func parseArgs() (string, []string) {
 func main() {
 	command, args := parseArgs()
 	if command == "put" && len(args) == 2 {
-		client.PutRequest(args)
+		client.ClientPut(args)
 	} else if command == "get" && len(args) == 2 {
-		client.GetRequest(args)
+		client.ClientGet(args)
 	} else if command == "delete" && len(args) == 1 {
-		client.DeleteRequest(args)
+		client.ClientDel(args)
 	} else if command == "ls" && len(args) == 1 {
-		client.LsCommand(args)
+		client.ClientLs(args)
 	} else {
 		log.Fatal("Command not recognized or invalid args")
 	}
