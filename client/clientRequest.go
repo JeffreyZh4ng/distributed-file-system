@@ -117,9 +117,6 @@ func ClientPut(args []string) {
 		socket := establishTCP(putNodes[i], FILE_PORT)
 		jsonName, _ := json.Marshal(fileName)
 		socket.Write(jsonName)
-		
-		timer := time.NewTimer(500 * time.Millisecond)
-		<-timer.C
 		_, err = io.Copy(socket, file)
 		log.Infof("Client wrote to node %s", putNodes[i])
 	}
