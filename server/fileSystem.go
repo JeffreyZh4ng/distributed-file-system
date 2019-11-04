@@ -25,6 +25,7 @@ type PendingResponse struct {
 
 var PARENT_DIR string = "nodeFiles"
 var NODE_PORT_NUM string = "6000"
+var FINISHED_REQUEST_TTL int = 5000
 var NUM_REPLICAS int = 4
 
 // go routine that will handle requests and resharding of files from failed nodes
@@ -61,9 +62,13 @@ func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
 			}
 		}
 
-		// Check for any failed nodes
 		findFailedNodes(membership, localFiles)
-		// Clean up completed requests here
+		for requestID, finishTime := range completedRequests {
+			currTime := time.Now().UnixNano() / int64(time.Millisecond)
+			if currTime-finishTime > TIMEOUT_MS {
+				delete(completedRequests, requestID)
+			}
+		}
 	}
 }
 
@@ -166,7 +171,6 @@ func serverHandleLs(membership *Membership, localFiles *LocalFiles, request *Req
 		if socket == nil {
 			return false
 		}
-		defer socket.Close()
 
 		// Send the string to the client
 		fileGroupString := strings.Join(fileGroup, ",")
