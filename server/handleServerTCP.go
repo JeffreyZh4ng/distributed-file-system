@@ -5,6 +5,7 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"net"
@@ -32,13 +33,14 @@ var REQUEST_TIMEOUT int64 = 5000
 
 // goroutine that serverMain will call that will handle accepting TCP connections
 // Needs to handle incoming TCP connections from other nodes as well as incoming connections from the client
-func TCPManager(membership *Membership, localfiles *LocalFiles) {
+func TCPManager(membership *Membership, localFiles *LocalFiles) {
 
 	// This will be used to communicate between goroutines
 	infoTransfer := map[int]int{}
 
 	go TcpClientListener(membership, infoTransfer)
 	go TcpServerListener(membership, infoTransfer)
+	go TcpFileListener(localFiles)
 }
 
 func openTCPListener(portNum string) (*net.TCPListener) {
@@ -98,7 +100,7 @@ func handleRequest(membership *Membership, request *Request, infoTransfer map[in
 			socket, _ := net.DialTCP("tcp", nil, tcpAddr)
 			
 			// Special case where timeout is different for the get request
-			if request.Type == "get" {
+			if request.Type == "put" {
 				randomNodes := getRandomNodes(membership)
 				jsonResponse, _ := json.Marshal(randomNodes)
 				socket.Write(jsonResponse)
@@ -166,5 +168,29 @@ func TcpServerListener(membership *Membership, infoTransfer map[int]int) {
 			// We will do different thing later
 			infoTransfer[pendingResponse.ID] = 0
 		}
+	}
+}
+
+func TcpFileListener(localFiles *LocalFiles) {
+	listener := openTCPListener(FILE_PORT)
+
+	for {
+		// We need to somehow populate the fileSystem with the other nodes with the same file
+		conn, _ := listener.AcceptTCP()
+		buffer := make([]byte, 1024)
+		readLen, _ := conn.Read(buffer)
+
+		var fileName string	
+		json.Unmarshal(buffer[:readLen], &fileName)
+
+		localFilePath := "../" + PARENT_DIR + "/" + fileName
+		fileDes, err := os.Open(localFilePath)
+		if err != nil {
+			log.Infof("Unable to open local file: %s", err)
+			continue
+		}
+
+		io.Copy(fileDes, conn)
+		fileDes.Close()
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"time"
 )
 
 var CLIENT_PORT string = "6000"
@@ -45,6 +46,8 @@ func initRequest(requestType string, fileName string) {
 		jsonRequest, _ := json.Marshal(clientRequest)
 		socket.Write(jsonRequest)
 	}
+	
+	log.Fatal("Server could not reach any server!")
 }
 
 // Helper that establishes a TCP connection
@@ -110,7 +113,13 @@ func ClientPut(args []string) {
 	
 	for i := 0; i < len(putNodes); i++ {
 		socket := establishTCP(putNodes[i], FILE_PORT)
+		jsonName, _ := json.Marshal(fileName)
+		socket.Write(jsonName)
+		
+		timer := time.NewTimer(500 * time.Millisecond)
+		<-timer.C
 		_, err = io.Copy(socket, file)
+		log.Infof("Client wrote to node %s", putNodes[i])
 	}
 }
 
