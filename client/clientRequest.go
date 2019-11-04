@@ -155,6 +155,6 @@ func writeFile(filePath string, readConn *net.TCPConn) {
 		log.Infof("Unable to create local file: %s", err)
 		return
 	}
-	io.Copy(fileDes, readConn)
+	io.TeeReader(fileDes, readConn)
 	fileDes.Close()
 }

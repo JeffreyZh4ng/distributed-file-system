@@ -195,7 +195,7 @@ func TcpFileListener(localFiles *LocalFiles) {
 			continue
 		}
 
-		io.Copy(fileDes, conn)
+		io.TeeReader(fileDes, conn)
 		fileDes.Close()
 	}
 }
