@@ -181,7 +181,7 @@ func TcpFileListener(localFiles *LocalFiles) {
 	for {
 		// We need to somehow populate the fileSystem with the other nodes with the same file
 		conn, _ := listener.AcceptTCP()
-		buffer := make([]byte, 1024)
+		buffer := make([]byte, 28)
 		readLen, _ := conn.Read(buffer)
 
 		var fileName string	

@@ -99,10 +99,10 @@ func ClientPut(args []string) {
 	defer socket.Close()
 
 	buffer := make([]byte, 1024)
-	readLen, _ := readConn.Read(buffer)
+	readlen, _ := readconn.read(buffer)
 
-	var putNodes []string
-	json.Unmarshal(buffer[:readLen], &putNodes)
+	var putnodes []string
+	json.unmarshal(buffer[:readlen], &putnodes)
 
 	log.Infof("Nodes that the client is writing to %s", putNodes)	
 	localFilePath := PARENT_DIR + "/" + args[0]
@@ -126,30 +126,45 @@ func ClientPut(args []string) {
 func ClientDel(args []string) {
 	fileName := args[0]
 	initRequest("delete", fileName)
+
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", hostname+":"+CLIENT_PORT)
+	socket, _ := net.ListenTCP("tcp", tcpAddr)
+	readConn, _ := socket.AcceptTCP()
+	defer socket.Close()
+
+	buffer := make([]byte, 4)
+	readConn.Read(buffer)
+	if string(buffer) == "fail" {
+		log.Infof("The file %s was not found in the system!", fileName)
+		return
+	}
+
+	log.Infof("%d was deleted from the system!", fileName)
 }
 
-/*
 func ClientLs(args []string) {
 	fileName := args[0]
-	clientRequestConn := initRequest("ls_init", fileName)
-	// Make ls request message sent to leader
+	initRequest("ls", fileName)
 
-	// Waiting for leader response
-	msgbuf := make([]byte, 1024)
-	msglen, err := clientRequestConn.Read(msgbuf)
-	if err != nil {
-		log.Infof("TCP read error %s", err)
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", hostname+":"+CLIENT_PORT)
+	socket, _ := net.ListenTCP("tcp", tcpAddr)
+	readConn, _ := socket.AcceptTCP()
+	defer socket.Close()
+
+	buffer := make([]byte, 4)
+	readConn.Read(buffer)
+	if string(buffer) == "fail" {
+		log.Infof("The file %s was not found in the system!", fileName)
 		return
 	}
-	newNodeMessage := NodeMessage{}
-	err = json.Unmarshal(msgbuf[:msglen], &newNodeMessage)
-	if err != nil {
-		log.Infof("Unable to decode put respond msg %s", err)
-		return
-	}
-	log.Info(newNodeMessage.Data)
-	clientRequestConn.Close()
-}*/
+
+	buffer = make([]byte, 1024)
+	readlen, _ := readconn.read(buffer)
+
+	var hosts []string
+	json.unmarshal(buffer[:readlen], &hosts)
+	log.Infof("Nodes that contain file %s:\n%s", fileName, hosts)
+}
 
 func writeFile(filePath string, readConn *net.TCPConn) {
 	fileDes, err := os.OpenFile(filePath, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
