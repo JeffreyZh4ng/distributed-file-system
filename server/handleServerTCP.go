@@ -6,6 +6,7 @@ package server
 import (
 	"encoding/json"
 	log "github.com/sirupsen/logrus"
+	"math/rand"
 	"net"
 	"os"
 	"time"
@@ -34,7 +35,7 @@ var REQUEST_TIMEOUT int64 = 5000
 func TCPManager(membership *Membership, localfiles *LocalFiles) {
 
 	// This will be used to communicate between goroutines
-	infoTransfer := map[int][]string{}
+	infoTransfer := map[int]int{}
 
 	go TcpClientListener(membership, infoTransfer)
 	go TcpServerListener(membership, infoTransfer)
@@ -56,7 +57,7 @@ func openTCPListener(portNum string) (*net.TCPListener) {
 }
 
 // This will listen for any client connection and will process their request
-func TcpClientListener(membership *Membership, infoTransfer map[int][]string) {
+func TcpClientListener(membership *Membership, infoTransfer map[int]int) {
 	listener := openTCPListener(CLIENT_PORT)
 	requestID := 1000
 
@@ -75,27 +76,18 @@ func TcpClientListener(membership *Membership, infoTransfer map[int][]string) {
 			FileName: clientRequest.FileName,
 		}
 		requestID++
-
-		switch clientRequest.MsgType {
-		case "get":
-			go handleGetRequest(membership, request, infoTransfer)
-		case "put":
-			// go handlePutRequest(membership, request, infoTransfer)
-		case "delete":
-			// go handleDeleteRequest(membership, request)
-		case "ls":
-			// go handleLsRequest(membership, request)
-		}
+		go handleRequest(membership, request, infoTransfer)
 	}
 }
 
-func handleGetRequest(membership *Membership, request *Request, infoTransfer map[int][]string) {
+func handleRequest(membership *Membership, request *Request, infoTransfer map[int]int) {
 	startTime := time.Now().UnixNano() / int64(time.Millisecond)
 	ticker := time.NewTicker(1000 * time.Millisecond)
 
 	for {
 		<-ticker.C
 
+		// This means that the server listener recieved info on the requestID
 		if _, contains := infoTransfer[request.ID]; contains {
 			break
 		}
@@ -104,11 +96,20 @@ func handleGetRequest(membership *Membership, request *Request, infoTransfer map
 		if currTime-startTime > REQUEST_TIMEOUT {
 			tcpAddr, _ := net.ResolveTCPAddr("tcp", request.SrcHost+":"+FILE_PORT)
 			socket, _ := net.DialTCP("tcp", nil, tcpAddr)
-			socket.Write([]byte("fail"))
+			
+			// Special case where timeout is different for the get request
+			if request.Type == "get" {
+				randomNodes := getRandomNodes(membership)
+				jsonResponse, _ := json.Marshal(randomNodes)
+				socket.Write(jsonResponse)
+			} else {
+				socket.Write([]byte("fail"))
+			}
 			break
 		}
 	}
 
+	// Remove the request from the pending request bus	
 	for i := 0; i < len(membership.Pending); i++ {
 		if membership.Pending[i].ID == request.ID {
 			membership.Pending = append(membership.Pending[:i], membership.Pending[i+1:]...)
@@ -116,31 +117,31 @@ func handleGetRequest(membership *Membership, request *Request, infoTransfer map
 			return
 		}
 	}
+
+	// Cleanup info transfer so it doesnt get too big
+	delete(infoTransfer, request.ID)
 }
-/*
-func handlePutRequest(membership *Membership, request *Request) {
-	startTime := time.Now().UnixNano() / int64(time.Millisecond)
-	elapsedTime := 0
-	ticker := time.NewTicker(1000 * time.Millisecond)
 
+// Stupid unique random number generator
+func getRandomNodes(membership *Membership) ([]string) {
+	nodeList := []string{}
+	randNums := map[int]int{}
 	for {
-		<-ticker.C
-
-		if _, contains := infoTransfer[requestID]; contains {
+		randIndex := rand.Intn(len(membership.List))
+		if _, contains := randNums[randIndex]; !contains {
+			randNums[randIndex] = 0
+			nodeList = append(nodeList, membership.List[randIndex])
+		}
+		
+		if len(nodeList) == 4  || len(nodeList) == len(membership.List) {
 			break
 		}
-
-		currTime := time.Now().UnixNano() / int64(time.Millisecond)
-		elapsedTime += (currTime - startTime)
-		if elapsedTime > REQUEST_TIMEOUT {
-			log.Info("Server timed out waiting for get request, file does not exist!")
-			return
-		}
 	}
-}
-*/
 
-func TcpServerListener(membership *Membership, infoTransfer map[int][]string) {
+	return nodeList
+}
+
+func TcpServerListener(membership *Membership, infoTransfer map[int]int) {
 	listener := openTCPListener(SERVER_PORT)
 
 	for {
@@ -151,6 +152,10 @@ func TcpServerListener(membership *Membership, infoTransfer map[int][]string) {
 		nodeMessage := &NodeMessage{}
 		json.Unmarshal(buffer[:readLen], &nodeMessage)
 
+		if nodeMessage.MsgType == "PendingPut" {
+			// We need to send the list back to the client
+		}
+
 		if nodeMessage.MsgType == "PendingPut" ||
 		   nodeMessage.MsgType == "PendingGet" ||
 		   nodeMessage.MsgType == "PendingDelete" ||
@@ -159,7 +164,7 @@ func TcpServerListener(membership *Membership, infoTransfer map[int][]string) {
 			json.Unmarshal(nodeMessage.Data, pendingResponse)
 		
 			// We will do different thing later
-			infoTransfer[pendingResponse.ID] = []string{}
+			infoTransfer[pendingResponse.ID] = 0
 		}
 	}
 }

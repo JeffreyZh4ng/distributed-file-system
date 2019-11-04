@@ -92,6 +92,13 @@ func serverHandlePut(membership *Membership, localFiles *LocalFiles, request *Re
 
 		leaderHostName := membership.List[0]
 		contactNode(leaderHostName, nodeMessage)
+		
+		// Write the list to the client as well
+		tcpAddr, _ := net.ResolveTCPAddr("tcp", request.SrcHost+":"+CLIENT_PORT)
+		socket, _ := net.DialTCP("tcp", nil, tcpAddr)
+		jsonResponse, _ := json.Marshal(fileGroup)
+		socket.Write(jsonResponse)
+
 		return true
 	}
 

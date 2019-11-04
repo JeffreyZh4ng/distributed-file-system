@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"time"
 )
 
 var CLIENT_PORT string = "6000"
@@ -21,7 +20,7 @@ type ClientRequest struct {
 	SrcHost  string
 }
 
-func initRequest(requestType string, fileName string) (*net.TCPConn) {
+func initRequest(requestType string, fileName string) {
 	localHost, _ := os.Hostname()
 
 	for i := 1; i <= 10; i++ {
@@ -45,10 +44,7 @@ func initRequest(requestType string, fileName string) (*net.TCPConn) {
 
 		jsonRequest, _ := json.Marshal(clientRequest)
 		socket.Write(jsonRequest)
-		return socket
 	}
-
-	return nil
 }
 
 // Helper that establishes a TCP connection
@@ -89,10 +85,38 @@ func ClientGet(args []string) {
 	writeFile(filePath, readConn)
 }
 
+func ClientPut(args []string) {
+	hostname, _ := os.Hostname()
+	fileName := args[1]
+	initRequest("put", fileName)
+	
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", hostname+":"+CLIENT_PORT)
+	socket, _ := net.ListenTCP("tcp", tcpAddr)
+	readConn, _ := socket.AcceptTCP()
+	defer socket.Close()
+
+	buffer := make([]byte, 1024)
+	readLen, _ := readConn.Read(buffer)
+
+	var putNodes []string
+	json.Unmarshal(buffer[:readLen], &putNodes)
+	
+	localFilePath := "../" + PARENT_DIR + "/" + args[0]
+	file, err := os.Open(localFilePath)
+	if err != nil {
+		log.Infof("Unable to open local file: %s", err)
+		return
+	}
+	
+	for i := 0; i < len(putNodes); i++ {
+		socket := establishTCP(putNodes[i], FILE_PORT)
+		_, err = io.Copy(socket, file)
+	}
+}
+
 func ClientDel(args []string) {
 	fileName := args[0]
-	clientRequestConn := initRequest("ls_init", fileName)
-	clientRequestConn.Close()
+	initRequest("delete", fileName)
 }
 
 /*
@@ -118,36 +142,6 @@ func ClientLs(args []string) {
 	clientRequestConn.Close()
 }*/
 
-
-/*
-func ClientPut(args []string) {
-	fileName := args[1]
-	clientRequestConn := initRequest("ls_init", fileName)
-	localHost, _ := os.Hostname()
-	localFilePath := FILE_ROOT + args[0]
-
-	// Waiting for leader response
-	msgbuf := make([]byte, 1024)
-	msglen, err := clientRequestConn.Read(msgbuf)
-	if err != nil {
-		log.Infof("TCP read error %s", err)
-		return
-	}
-	newNodeMessage := NodeMessage{}
-	err = json.Unmarshal(msgbuf[:msglen], &newNodeMessage)
-	if err != nil {
-		log.Infof("Unable to decode put respond msg %s", err)
-		return
-	}
-	log.Info(newNodeMessage.Data)
-	clientRequestConn.Close()
-	handleLeaderResponse(newNodeMessage, fileName, localHost, localFilePath)
-	return
-
-}*/
-
-
-
 func writeFile(filePath string, readConn *net.TCPConn) {
 	fileDes, err := os.Create(filePath)
 	if err != nil {
@@ -156,31 +150,4 @@ func writeFile(filePath string, readConn *net.TCPConn) {
 	}
 	io.Copy(fileDes, readConn)
 	fileDes.Close()
-}
-
-func waitingforFile(filePath string) {
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", ":"+FILE_PORT)
-	l, _ := net.ListenTCP("tcp", tcpAddr)
-	startTime := time.Now().UnixNano() / int64(time.Millisecond)
-	
-	for {
-		curTime := time.Now().UnixNano() / int64(time.Millisecond)
-		if curTime-startTime > 5000 {
-			log.Infof("File unavailable")
-			break
-		}
-		readConn, err := l.AcceptTCP()
-
-		mkfile, err := os.Create(filePath)
-		if err != nil {
-			log.Infof("Unable to create local file: %s", err)
-			return
-		}
-		io.Copy(mkfile, readConn)
-		if err != nil {
-			log.Infof("Unable to create local file: %s", err)
-			return
-		}
-		mkfile.Close()
-	}
 }
