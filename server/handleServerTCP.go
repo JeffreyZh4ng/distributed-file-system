@@ -4,24 +4,24 @@ package server
 // So this server will
 
 import (
-	"os"
+
 	"net"
 	"encoding/json"
 	log "github.com/sirupsen/logrus"
-	"time"
+
 	"strings"
 )
 
 type NodeMessage struct {
-	MsgType   string,
-	FileName  string,
-	SrcHost   string,
-	Data      []byte,
+	MsgType   string
+	FileName  string
+	SrcHost   string
+	Data      []byte
 }
 
 // goroutine that serverMain will call that will handle accepting TCP connections
 // Needs to handle incoming TCP connections from other nodes as well as incoming connections from the client
-func TcpServerListener(l *net.TCPListener, membership *Membership, localfiles *LocalFiles) {
+func TcpServerListener(membership *Membership, localfiles *LocalFiles) {
 	for{
 		conn, err := l.AcceptTCP()
 		if err != nil {
@@ -51,6 +51,3 @@ func processTCPConnection(conn *net.TCPConn, membership *Membership, localfiles 
 
 }
 
-func processClientRequest(clientConn *net.TCPConn, clientMsg NodeMessage membership *Membership, localfiles *LocalFiles, requestPool map[int]bool){
-
-}

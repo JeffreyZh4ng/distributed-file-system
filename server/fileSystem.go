@@ -1,12 +1,14 @@
 package server
 
 import (
-	"ioutil"
-	"math/rand"
+	"io/ioutil"
 	"net"
 	"os"
 	"time"
 	"strings"
+	"encoding/json"
+	log "github.com/sirupsen/logrus"
+	"math"
 )
 
 // Local datastore that keeps track of the other nodes that have the same files
@@ -28,7 +30,7 @@ var NUM_REPLICAS int = 4
 // go routine that will handle requests and resharding of files from failed nodes
 func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
 	hostname, _ := os.Hostname()
-	completedRequests := map[int]int64
+	completedRequests := make(map[int]int64)
 	ticker := time.NewTicker(1000 * time.Millisecond)
 
 	for {
@@ -70,7 +72,7 @@ func serverHandlePut(membership *Membership, localFiles *LocalFiles, request *Re
 	fileGroup, contains := localFiles.Files[request.FileName]
 	
 	// Only thing we do for the put when the node is the fileMaster is send the info to leader
-	if contains && fileGroup[0] == hostName { 
+	if contains && fileGroup[0] == hostname { 
 		pendingResponse := PendingResponse{
 			RequestID: request.RequestID,
 			Timestamp: localFiles.UpdateTimes[request.FileName],
@@ -78,7 +80,7 @@ func serverHandlePut(membership *Membership, localFiles *LocalFiles, request *Re
 		}
 		
 		jsonPending, _ := json.Marshal(pendingResponse)
-		nodeMessage := server.NodeMessage{
+		nodeMessage := NodeMessage{
 			MsgType: "PendingPut",
 			FileName: "",
 			SrcHost: "",
@@ -98,7 +100,7 @@ func serverHandleGet(membership *Membership, localFiles *LocalFiles, request *Re
 	fileGroup, contains := localFiles.Files[request.FileName]
 
 	// If the current node contains the file and the node is the file master, send the file
-	if contains && fileGroup[0] == hostName {
+	if contains && fileGroup[0] == hostname {
 		pendingResponse := PendingResponse{
 			RequestID: request.RequestID,
 			Timestamp: 0,
@@ -106,7 +108,7 @@ func serverHandleGet(membership *Membership, localFiles *LocalFiles, request *Re
 		}
 		
 		jsonPending, _ := json.Marshal(pendingResponse)
-		nodeMessage := server.NodeMessage{
+		nodeMessage := NodeMessage{
 			MsgType: "PendingGet",
 			FileName: "",
 			SrcHost: "",
@@ -139,7 +141,7 @@ func serverHandleDelete(membership *Membership, localFiles *LocalFiles, request 
 		}
 		
 		jsonPending, _ := json.Marshal(pendingResponse)
-		nodeMessage := server.NodeMessage{
+		nodeMessage := NodeMessage{
 			MsgType: "PendingDelete",
 			FileName: "",
 			SrcHost: "",
@@ -191,7 +193,7 @@ func serverHandleLs(membership *Membership, localFiles *LocalFiles, request *Req
 }
 
 // Helper method that will contact a specified node and send a node message
-func contactNode(nodeHostName string, leaderMessage *NodeMessage) {
+func contactNode(nodeHostName string, leaderMessage NodeMessage) {
 	leaderHostName := membership.List[0]
 	tcpAddr, err := net.ResolveTCPAddr("tcp", leaderHostName + ":" + NODE_PORT_NUM)
 	if err != nil {
