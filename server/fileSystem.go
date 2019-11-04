@@ -142,7 +142,7 @@ func serverHandleDelete(membership *Membership, localFiles *LocalFiles, request 
 		delete(localFiles.Files, request.FileName)
 		delete(localFiles.UpdateTimes, request.FileName)
 
-		err := os.Remove("../" + PARENT_DIR + "/" + request.FileName)
+		err := os.Remove(PARENT_DIR + "/" + request.FileName)
 		if err != nil {
 			log.Infof("Unable to remove file %s from local node!", request.FileName)
 			return false
