@@ -5,7 +5,6 @@ import (
 	"time"
 	"net"
 	log "github.com/sirupsen/logrus"
-	"hash/fnv"
 	"encoding/json"
 	"strconv"
 	"io"
@@ -380,12 +379,6 @@ func findGroupMember(host string, group []string) bool{
 	return false
 }
 
-func hashFileNames(s string) int{
-	h := fnv.New32a()
-	h.Write([]byte(s))
-	log.Infof("File hash number: %d", (h.Sum32())%10+1)
-    return int((h.Sum32())%10+1)
-}
 
 
 
