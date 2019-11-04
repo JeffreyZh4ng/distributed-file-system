@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 )
 
@@ -44,7 +43,7 @@ func initRequest(requestType string, fileName string) (*net.TCPConn) {
 			SrcHost:  localHost,
 		}
 
-		jsonRequest, err := json.Marshal(clientRequest)
+		jsonRequest, _ := json.Marshal(clientRequest)
 		socket.Write(jsonRequest)
 		return socket
 	}
@@ -70,7 +69,7 @@ func establishTCP(hostname string, portNumber string) (*net.TCPConn) {
 }
 
 func ClientGet(args []string) {
-	hostname, _. := os.Hostname()
+	hostname, _ := os.Hostname()
 	fileName := args[0]
 	initRequest("get", fileName)
 
@@ -80,9 +79,9 @@ func ClientGet(args []string) {
 	defer socket.Close()
 
 	buffer := make([]byte, 4)
-	readLen, _ := readConn.Read(buffer)
+	readConn.Read(buffer)
 	if string(buffer) == "fail" {
-		log.Infof("The file %f was not found in the system!", fileName)
+		log.Infof("The file %s was not found in the system!", fileName)
 		return
 	}
 	
@@ -90,13 +89,11 @@ func ClientGet(args []string) {
 	writeFile(filePath, readConn)
 }
 
-/*
 func ClientDel(args []string) {
 	fileName := args[0]
 	clientRequestConn := initRequest("ls_init", fileName)
 	clientRequestConn.Close()
 }
-*/
 
 /*
 func ClientLs(args []string) {
@@ -158,12 +155,12 @@ func writeFile(filePath string, readConn *net.TCPConn) {
 		return
 	}
 	io.Copy(fileDes, readConn)
-	mkfile.Close()
+	fileDes.Close()
 }
 
 func waitingforFile(filePath string) {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", ":"+FILE_TRANSFER_PORT)
-	l, err := net.ListenTCP("tcp", tcpAddr)
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", ":"+FILE_PORT)
+	l, _ := net.ListenTCP("tcp", tcpAddr)
 	startTime := time.Now().UnixNano() / int64(time.Millisecond)
 	
 	for {
