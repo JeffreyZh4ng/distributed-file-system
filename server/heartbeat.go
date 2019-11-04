@@ -28,7 +28,7 @@ type Membership struct {
 
 // Every heartbeat will also contain a list of all files in the system
 type Request struct {
-	RequestID int
+	ID 	 int
 	Type     string
 	SrcHost  string
 	FileName string

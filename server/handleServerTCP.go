@@ -12,45 +12,113 @@ import (
 	"strings"
 )
 
-type NodeMessage struct {
-	MsgType   string,
-	FileName  string,
-	SrcHost   string,
-	Data      []byte,
-}
+var SERVER_PORT string = "5000"
+var CLIENT_PORT string = "6000" 
+var SERVER_PORT string = "7000"
+var REQUEST_TIMEOUT int64 = 5000
 
 // goroutine that serverMain will call that will handle accepting TCP connections
 // Needs to handle incoming TCP connections from other nodes as well as incoming connections from the client
-func TcpServerListener(l *net.TCPListener, membership *Membership, localfiles *LocalFiles) {
-	for{
-		conn, err := l.AcceptTCP()
-		if err != nil {
-			log.Fatal("TCP listener accept error ", err)
+func RequestListener(membership *Membership, localfiles *LocalFiles) {
+	
+	// This will be used to communicate between goroutines
+	infoTransfer = map[int][]string
+
+	go TcpClientListener(membership, infoTransfer)
+	go TcpServerListener(membership, localFiles, infoTransfer)
+}
+
+func openTCPListener(portNum string) {
+	hostname, _ := os.Hostname()	
+	tcpAddr, err := ResolveTCPAddr("tcp", hostname + ":" + portNum)
+	if err != nil {
+		log.Fatal("Could not resolve the hostname!")
+	}
+
+	listener, err := net.ListenTCP("tcp", tcpAddr)
+	if err != nil {
+		log.Fatal("Could not start listening at the address!")
+	}
+
+	return listener
+}
+
+// This will listen for any client connection and will process their request
+func TcpClientListener(membership *Membership, infoTransfer map[int][]string) {
+	listener = openTCPListener(CLIENT_PORT)
+	requestID := 1000
+	
+	for {
+		conn, _ := listener.AcceptTCP()
+		readLen, buffer := make(byte[], 1024)
+		conn.Read(msgbuf)
+
+		clientRequest := ClientRequest{}
+		json.Unmarshal(msgbuf[:readLen], &clientRequest)
+
+		request := &Request{
+			ID: requestID,
+			Type: clientRequest.RequestType,
+			SrcHost: clientRequest.SrcHost
+			FileName: clientRequest.FileName,
 		}
-		go processTCPConnection(conn, membership, localfiles)
+		requestID++
+		
+		switch clientRequest.RequestType {
+		case "get":
+			go handleGetRequest(membership, request)
+		case "put":
+			go handlePutRequest(membership, request, infoTransfer)
+		case "delete":
+			go handleDeleteRequest(membership, request)
+		case "ls":
+			go handleLsRequest(membership, request)
+		}	
 	}
 }
 
-// This function should be passed in the membership and filesystem and it will add a request to the Pending Requests list based on the TCP connection it recieved
-func processTCPConnection(conn *net.TCPConn, membership *Membership, localfiles *LocalFiles){
-	msgbuf := make([]byte, 1024)
-	msglen, err := conn.Read(msgbuf)
-	if err != nil {
-		log.Infof("TCP read error %s", err)
-		return
-	}	
-	newMsg := NodeMessage{}
-	err = json.Unmarshal(msgbuf[:msglen], &newMsg)
-	if err != nil {
-		log.Infof("Unable to decode put respond msg %s", err)
-		return
-	}
-	if strings.Contains(NodeMessage.MsgType, "init"){
-		// It's request from client 
-	} 
+func handleGetRequest(membership *Membership, request *Request) {
+	
+	// Wait three seconds before removing the request from the pending list
+	timer := time.NewTimer(3 * time.Second)
+	<-timer.C
 
+	for i := 0; i < len(membership.Pending); i++ {
+		if membership.Pending[i].ID == request.ID {
+			membership.Pending = append(membership.Pending[:i], membership.Pending[i+1:]...)
+			return
+		}
+	}
 }
 
-func processClientRequest(clientConn *net.TCPConn, clientMsg NodeMessage membership *Membership, localfiles *LocalFiles, requestPool map[int]bool){
+func handlePutRequest(membership *Membership, request *Request) {
+	startTime := time.Now().UnixNano() / int64(time.Millisecond)
+	elapsedTime := 0
+	ticker := time.NewTicker(1000 * time.Millisecond)
+	
+	for {
+		<-ticket.C
 
+		if _, contains := infoTransfer[requestID]; contains {
+			break
+		}
+
+		currTime := time.Now().UnixNano() / int64(time.Millisecond)
+		elapsedTime += (currTime - startTime)
+		if elapsedTime > REQUEST_TIMEOUT {
+			log.Info("Server timed out waiting for get request, file does not exist!")
+			return
+		} 
+	}
+}
+
+func TcpServerListener(membership *Membership, localfiles *LocalFiles) {
+	// listener = openTCPListener(SERVER_PORT)
+	
+	for {
+		// conn, _ := listener.AcceptTCP()
+		// readLen, buffer := make(byte[], 1024)
+		// json.Unmarshal(msgbuf[:readLen], &clientRequest)
+
+	}
 }

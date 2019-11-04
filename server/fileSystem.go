@@ -1,7 +1,7 @@
 package server
 
 import (
-	"ioutil"
+	"io/ioutil"
 	"math/rand"
 	"net"
 	"os"
@@ -16,7 +16,7 @@ type LocalFiles struct {
 }
 
 type PendingResponse struct {
-	RequestID int
+	ID int
 	Timestamp int64
 	NodeList []string
 }
@@ -39,7 +39,7 @@ func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
 		for _, request := range membership.Pending {
 			
 			// If the request is in the complete list then continue
-			if _, contains := completedRequests[request.RequestID]; contains {
+			if _, contains := completedRequests[request.ID]; contains {
 				continue
 			}
 
@@ -56,7 +56,7 @@ func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
 			}
 
 			if requestCompleted {
-				completedRequests[request.RequestID] = time.Now().UnixNano() / int64(time.Millisecond)
+				completedRequests[request.ID] = time.Now().UnixNano() / int64(time.Millisecond)
 			}
 		}
 
@@ -77,7 +77,7 @@ func serverHandlePut(membership *Membership, localFiles *LocalFiles, request *Re
 	// Only thing we do for the put when the node is the fileMaster is send the info to leader
 	if contains && fileGroup[0] == hostName { 
 		pendingResponse := PendingResponse{
-			RequestID: request.RequestID,
+			ID: request.ID,
 			Timestamp: localFiles.UpdateTimes[request.FileName],
 			NodeList: fileGroup,
 		}
@@ -104,22 +104,21 @@ func serverHandleGet(membership *Membership, localFiles *LocalFiles, request *Re
 
 	// If the current node contains the file and the node is the file master, send the file
 	if contains && fileGroup[0] == hostName {
-		pendingResponse := PendingResponse{
-			RequestID: request.RequestID,
-			Timestamp: 0,
-			NodeList: fileGroup,
+	
+		// Open and send the file from the cs-425-mp3 directory
+		localFilePath := "../" + PARENT_DIR + "/" + request.FileName
+		file, err:= os.Open(localFilePath)
+		if err != nil {
+			log.Infof("Unable to open local file: %s", err)
+			return false
 		}
 		
-		jsonPending, _ := json.Marshal(pendingResponse)
-		nodeMessage := server.NodeMessage{
-			MsgType: "PendingGet",
-			FileName: "",
-			SrcHost: "",
-			Data: jsonPending,
+		_, err := io.Copy(socket, file)
+		if err != nil {
+			log.Info("Server could not write the fileto the client!")
+			return false
 		}
 		
-		leaderHostName := membership.List[0]
-		contactNode(leaderHostName, nodeMessage)
 		return true
 	}
 
@@ -138,7 +137,7 @@ func serverHandleDelete(membership *Membership, localFiles *LocalFiles, request 
 		}
 
 		pendingResponse := PendingResponse{
-			RequestID: request.RequestID,
+			ID: request.ID,
 			Timestamp: 0,
 			NodeList: []string,
 		}
@@ -173,7 +172,7 @@ func serverHandleLs(membership *Membership, localFiles *LocalFiles, request *Req
 		// Send the string to the client
 		fileGroupString := strings.Join(fileGroup, ",")
 		pendingResponse := PendingResponse{
-			RequestID: request.RequestID,
+			ID: request.ID,
 			Timestamp: 0,
 			NodeList: fileGroupString,
 		}
