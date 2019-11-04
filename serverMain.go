@@ -64,7 +64,11 @@ func main() {
 		case "list":
 			log.Infof("Current list:\n%s", membership.List)
 		case "store":
-			// TODO: Need to fix. This is more complicated now
+			fileList := []string{}
+			for fileName, _ range localFiles.Files {
+				fileList = append(fileList, fileName)
+			}
+			log.Infof("Files stored in the server:\n%s", fileList)
 		case "leave":
 			log.Infof("Node %s is leaving the network!", hostname)
 			membership.Data[hostname] = 0

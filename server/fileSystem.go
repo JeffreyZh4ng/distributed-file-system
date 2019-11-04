@@ -124,7 +124,8 @@ func serverHandleGet(membership *Membership, localFiles *LocalFiles, request *Re
 			log.Infof("Unable to open local file: %s", err)
 			return false
 		}
-
+		
+		file.Seek(0, io.SeekStart)
 		_, err = io.Copy(socket, file)
 		if err != nil {
 			log.Info("Server could not write the fileto the client!")
