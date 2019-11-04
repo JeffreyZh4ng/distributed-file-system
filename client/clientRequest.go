@@ -106,7 +106,7 @@ func ClientPut(args []string) {
 	json.Unmarshal(buffer[:readLen], &putNodes)
 
 	log.Infof("Nodes that the client is writing to %s", putNodes)	
-	localFilePath := "../" + PARENT_DIR + "/" + args[0]
+	localFilePath := PARENT_DIR + "/" + args[0]
 	file, err := os.Open(localFilePath)
 	if err != nil {
 		log.Infof("Unable to open local file: %s", err)
