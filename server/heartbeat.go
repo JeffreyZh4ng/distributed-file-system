@@ -12,7 +12,7 @@ import (
 )
 
 var PORT_NUM string = "4000"
-var TIMEOUT_MS int64 = 3000
+var TIMEOUT_MS int64 = 4000
 var INTRODUCER_NODE string = "fa19-cs425-g84-01.cs.illinois.edu"
 // We need to make this a global so RPC can access it
 var membership *Membership
