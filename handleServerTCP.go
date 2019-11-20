@@ -163,7 +163,6 @@ func TcpServerListener(membership *Membership, localFiles *LocalFiles, infoTrans
 		
 		if nodeMessage.MsgType == "PendingPut" {
 			// We need to send the list back to the client
-			localFiles[pendingResponse.ID] = pendingResponse.NodeList
 		}
 
 		if nodeMessage.MsgType == "PendingPut" ||

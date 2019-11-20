@@ -26,9 +26,15 @@ type PendingResponse struct {
 var PARENT_DIR string = "nodeFiles"
 var FINISHED_REQUEST_TTL int = 5000
 var NUM_REPLICAS int = 4
+var localFiles *LocalFiles
 
 // go routine that will handle requests and resharding of files from failed nodes
 func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
+	localFiles = &server.LocalFiles{
+		Files: map[string][]string{},
+		UpdateTimes: map[string]int64{},
+	}
+
 	completedRequests := make(map[int]int64)
 	ticker := time.NewTicker(1000 * time.Millisecond)
 

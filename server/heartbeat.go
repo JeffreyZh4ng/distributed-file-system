@@ -14,6 +14,8 @@ import (
 var PORT_NUM string = "4000"
 var TIMEOUT_MS int64 = 3000
 var INTRODUCER_NODE string = "fa19-cs425-g84-01.cs.illinois.edu"
+// We need to make this a global so RPC can access it
+var membership *Membership
 
 // Need to store extra list that maintains order or the list
 // MP3 membership also handles pending requests
@@ -34,12 +36,45 @@ type Request struct {
 	FileName string
 }
 
-// Server setup that will make initial connections
-func ServerJoin(membership *Membership) {
+// Goroutine that will send out heartbeats every half second.
+func HeartbeatManager() {
+	serverStartup()	
+	go listenForUDP()
+ 
 	hostname, _ := os.Hostname()
+	ticker := time.NewTicker(1000 * time.Millisecond)
+	var wg sync.WaitGroup
+
+	for {
+		// This will block until the ticker sends a value to the chan
+		<-ticker.C
+		wg.Add(1)
+		go sendHeartbeats(&wg)
+		wg.Wait()
+
+		// If the current node has not left the network then update its time
+		if membership.Data[hostname] != 0 {
+			membership.Data[hostname] = time.Now().UnixNano() / int64(time.Millisecond)
+		}
+		removeExitedNodes()
+	}
+}
+
+// Server setup that will make initial connections and set global membership
+func serverStartup() {
+	hostname, _ := os.Hostname()
+	
+	var requests []*Request
+	membership = &Membership{
+		SrcHost: hostname,
+		Data:    map[string]int64{hostname: time.Now().UnixNano() / int64(time.Millisecond)},
+		List:    []string{hostname},
+		Pending: requests,
+	}
+	
 	if hostname != INTRODUCER_NODE {
 		log.Info("Writing to the introducer!")
-		writeMembershipList(membership, INTRODUCER_NODE)
+		writeMembershipList(INTRODUCER_NODE)
 
 	} else {
 		log.Info("Introducer attempting to reconnect to any node!")
@@ -50,36 +85,15 @@ func ServerJoin(membership *Membership) {
 			}
 
 			connectName := "fa19-cs425-g84-" + numStr + ".cs.illinois.edu"
-			writeMembershipList(membership, connectName)
+			writeMembershipList(connectName)
 		}
-	}
-}
-
-// Goroutine that will send out heartbeats every half second.
-func HeartbeatManager(membership *Membership) {
-	hostname, _ := os.Hostname()
-	ticker := time.NewTicker(1000 * time.Millisecond)
-	var wg sync.WaitGroup
-
-	for {
-		// This will block until the ticker sends a value to the chan
-		<-ticker.C
-		wg.Add(1)
-		go sendHeartbeats(membership, &wg)
-		wg.Wait()
-
-		// If the current node has not left the network then update its time
-		if membership.Data[hostname] != 0 {
-			membership.Data[hostname] = time.Now().UnixNano() / int64(time.Millisecond)
-		}
-		removeExitedNodes(membership)
 	}
 }
 
 // Function called by the heartbeat manager that will send heartbeats to neighbors
-func sendHeartbeats(membership *Membership, wg *sync.WaitGroup) {
+func sendHeartbeats(wg *sync.WaitGroup) {
 	hostName, _ := os.Hostname()
-	index := findHostnameIndex(membership, hostName)
+	index := findHostnameIndex(hostName)
 	lastIndex := index
 
 	// Sends two heartbeats to its immediate successors
@@ -90,7 +104,7 @@ func sendHeartbeats(membership *Membership, wg *sync.WaitGroup) {
 			break
 		}
 
-		go writeMembershipList(membership, membership.List[nameIndex])
+		go writeMembershipList(membership.List[nameIndex])
 	}
 
 	// Sends two heartbeats to its immediate predecessors
@@ -100,14 +114,14 @@ func sendHeartbeats(membership *Membership, wg *sync.WaitGroup) {
 			break
 		}
 
-		go writeMembershipList(membership, membership.List[nameIndex])
+		go writeMembershipList(membership.List[nameIndex])
 	}
 
 	wg.Done()
 }
 
 // This writes the membership lists to the socket which is called by sendHeartbeats
-func writeMembershipList(membership *Membership, hostName string) {
+func writeMembershipList(hostName string) {
 	conn, err := net.Dial("udp", hostName+":"+PORT_NUM)
 	if err != nil {
 		log.Fatal("Could not connect to node! %s", err)
@@ -127,7 +141,7 @@ func writeMembershipList(membership *Membership, hostName string) {
 // allowed timeout. If the last time is 0 then the node has left the network. We call this
 // after we send heartbeats because if the current node leaves, it sets its Data map enty
 // to 0 and must propogate this out to the other nodes.
-func removeExitedNodes(membership *Membership) {
+func removeExitedNodes() {
 	currTime := time.Now().UnixNano() / int64(time.Millisecond)
 	tempList := membership.List[:0]
 	rootName, _ := os.Hostname()
@@ -151,10 +165,13 @@ func removeExitedNodes(membership *Membership) {
 }
 
 // Goroutine that constantly listens for incoming UDP calls
-func ListenForUDP(ser *net.UDPConn, membership *Membership) {
+func listenForUDP() {
+	socketUDP := openUDPConn()
+
+	// This will fail when heartbeats grow beyond 1024 bytes
 	buffer := make([]byte, 1024)
 	for {
-		readLen, _, err := ser.ReadFromUDP(buffer)
+		readLen, _, err := socketUDP.ReadFromUDP(buffer)
 		if err != nil {
 			log.Infof("Encountered error while reading UDP socket! %s", err)
 			continue
@@ -170,15 +187,31 @@ func ListenForUDP(ser *net.UDPConn, membership *Membership) {
 			return
 		}
 
-		processNewMembershipList(membership, newMembership)
+		processNewMembershipList(newMembership)
 		if newMembership.LeaderUpdateTime > membership.LeaderUpdateTime {
 			membership.Pending = newMembership.Pending
 		}
 	}
 }
 
+// Helper method that will open a UDP connection
+func openUDPConn() (*net.UDPConn) {
+	hostname, _ := os.Hostname()
+	addr, err := net.ResolveUDPAddr("udp", hostname+":"+PORT_NUM)
+	if err != nil {
+		log.Fatal("Could not resolve hostname!: %s", err)
+	}
+	socketUDP, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		log.Fatal("Server could not set up UDP listener %s", err)
+	}
+	log.Infof("Connected to %s!", hostname)
+
+	return socketUDP
+}
+
 // Loop through the new membership and update the timestamps in the current node.
-func processNewMembershipList(membership *Membership, newMembership *Membership) {
+func processNewMembershipList(newMembership *Membership) {
 	for i := 0; i < len(newMembership.List); i++ {
 		nextHostname := newMembership.List[i]
 
@@ -201,7 +234,7 @@ func processNewMembershipList(membership *Membership, newMembership *Membership)
 			// it was removed from the list because it faile or left, and
 			// we just recieved a new time indicating that it's rejoining.
 			currTime := time.Now().UnixNano() / int64(time.Millisecond)
-			if findHostnameIndex(membership, nextHostname) >= len(membership.List) &&
+			if findHostnameIndex(nextHostname) >= len(membership.List) &&
 				currTime-newMembership.Data[nextHostname] < TIMEOUT_MS {
 
 				membership.List = append(membership.List, nextHostname)
@@ -220,7 +253,7 @@ func processNewMembershipList(membership *Membership, newMembership *Membership)
 }
 
 // Search that will find the index of the hostname in the list
-func findHostnameIndex(membership *Membership, hostName string) int {
+func findHostnameIndex(hostName string) int {
 	for i := 0; i < len(membership.List); i++ {
 		if membership.List[i] == hostName {
 			return i
@@ -228,4 +261,15 @@ func findHostnameIndex(membership *Membership, hostName string) int {
 	}
 
 	return len(membership.List)
+}
+
+// Getter method for the membership list
+func GetMembershipList() ([]string) {
+	return membership.List
+}
+
+// This is called from the serverMain. Sets the time to the current node to 0
+func LeaveNetwork() {
+	hostname, _ := os.Hostname()
+	membership.Data[hostname] = 0
 }

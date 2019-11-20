@@ -26,7 +26,7 @@ func main() {
 	} else if command == "delete" && len(args) == 1 {
 		client.ClientDel(args)
 	} else if command == "ls" && len(args) == 1 {
-		// client.ClientLs(args)
+		client.ClientLs(args)
 	} else {
 		log.Fatal("Command not recognized or invalid args")
 	}
