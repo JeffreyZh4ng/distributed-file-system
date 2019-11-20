@@ -223,7 +223,7 @@ func processNewMembershipList(newMembership *Membership) {
 			sort.Strings(membership.List)
 
 			// If the time in the new list is 0, the node left the network
-		} else if newMembership.Data[nextHostname] == 0 {
+		} else if newMembership.Data[nextHostname] == 0 || membership.Data[nextHostName] == 0 {
 			membership.Data[nextHostname] = 0
 
 			// If the new membership has a more recent time, update it
