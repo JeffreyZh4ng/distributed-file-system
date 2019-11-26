@@ -11,12 +11,9 @@ import (
 	"time"
 )
 
-var PORT_NUM string = "4000"
-var TIMEOUT_MS int64 = 4000
+var UDP_PORT_NUM string = "4000"
+var NODE_FAIL_TIMEOUT int64 = 4000
 var INTRODUCER_NODE string = "fa19-cs425-g84-01.cs.illinois.edu"
-
-// We need to make this a global so RPC can access it
-var Membership *MembershipList
 
 // Need to store extra list that maintains order or the list
 type MembershipList struct {
@@ -27,6 +24,9 @@ type MembershipList struct {
 	RequestUTime int64
 	Pending      []*Request
 }
+
+// We need to make this a global so RPC can access it
+var Membership *MembershipList
 
 // Goroutine that will send out heartbeats every half second.
 func HeartbeatManager() {
@@ -115,7 +115,7 @@ func sendHeartbeats(wg *sync.WaitGroup) {
 
 // This writes the Membership lists to the socket which is called by sendHeartbeats
 func writeMembershipList(hostName string) {
-	conn, err := net.Dial("udp", hostName+":"+PORT_NUM)
+	conn, err := net.Dial("udp", hostName+":"+UDP_PORT_NUM)
 	if err != nil {
 		log.Fatal("Could not connect to node! %s", err)
 	}
@@ -147,7 +147,7 @@ func removeExitedNodes() {
 			} else {
 				tempList = append(tempList, hostName)
 			}
-		} else if !(currTime-lastPing > TIMEOUT_MS) {
+		} else if !(currTime-lastPing > NODE_FAIL_TIMEOUT) {
 			tempList = append(tempList, hostName)
 		} else {
 			log.Infof("Node %s timed out!", hostName)
@@ -190,7 +190,7 @@ func listenForUDP() {
 // Helper method that will open a UDP connection
 func openUDPConn() (*net.UDPConn) {
 	hostname, _ := os.Hostname()
-	addr, err := net.ResolveUDPAddr("udp", hostname+":"+PORT_NUM)
+	addr, err := net.ResolveUDPAddr("udp", hostname+":"+UDP_PORT_NUM)
 	if err != nil {
 		log.Fatal("Could not resolve hostname!: %s", err)
 	}
@@ -229,7 +229,7 @@ func processNewMembershipList(newMembership *MembershipList) {
 			// we just recieved a new time indicating that it's rejoining.
 			currTime := time.Now().UnixNano() / int64(time.Millisecond)
 			if findHostnameIndex(nextHostname) >= len(Membership.List) &&
-				currTime-newMembership.Data[nextHostname] < TIMEOUT_MS {
+				currTime-newMembership.Data[nextHostname] < NODE_FAIL_TIMEOUT {
 
 				Membership.List = append(Membership.List, nextHostname)
 				sort.Strings(Membership.List)

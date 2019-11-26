@@ -17,198 +17,106 @@ type LocalFiles struct {
 	UpdateTimes map[string]int64
 }
 
-type PendingResponse struct {
-	ID        int
-	Timestamp int64
-	NodeList  []string
-}
-
-var PARENT_DIR string = "nodeFiles"
 var FINISHED_REQUEST_TTL int = 5000
 var NUM_REPLICAS int = 4
+var ServerResponses map[string]string
 var localFiles *LocalFiles
 
 // go routine that will handle requests and resharding of files from failed nodes
-func FileSystemManager(membership *Membership, localFiles *LocalFiles) {
-	localFiles = &server.LocalFiles{
-		Files: map[string][]string{},
-		UpdateTimes: map[string]int64{},
-	}
+func FileSystemManager() {
+	go clientRequestListener()
+	go serverResponseListener()
+	go fileTransferListener()
 
-	completedRequests := make(map[int]int64)
-	ticker := time.NewTicker(1000 * time.Millisecond)
+	// localFiles = &server.LocalFiles{
+	// 	Files: map[string][]string{},
+	// 	UpdateTimes: map[string]int64{},
+	// }
 
-	for {
-		<-ticker.C
+	// completedRequests := make(map[int]int64)
+	// ticker := time.NewTicker(1000 * time.Millisecond)
 
-		// Check if there are any requests in the membership list
-		for _, request := range membership.Pending {
+	// for {
+	// 	<-ticker.C
 
-			// If the request is in the complete list then continue
-			if _, contains := completedRequests[request.ID]; contains {
-				continue
-			}
+	// 	// Check if there are any requests in the membership list
+	// 	for _, request := range membership.Pending {
 
-			requestCompleted := false
-			switch request.Type {
-			case "put":
-				requestCompleted = serverHandlePut(membership, localFiles, request)
-			case "get":
-				requestCompleted = serverHandleGet(membership, localFiles, request)
-			case "delete":
-				requestCompleted = serverHandleDelete(membership, localFiles, request)
-			case "ls":
-				requestCompleted = serverHandleLs(membership, localFiles, request)
-			}
+	// 		// If the request is in the complete list then continue
+	// 		if _, contains := completedRequests[request.ID]; contains {
+	// 			continue
+	// 		}
 
-			if requestCompleted {
-				completedRequests[request.ID] = time.Now().UnixNano() / int64(time.Millisecond)
-			}
-		}
+	// 		requestCompleted := false
+	// 		switch request.Type {
+	// 		case "put":
+	// 			requestCompleted = serverHandlePut(membership, localFiles, request)
+	// 		case "get":
+	// 			requestCompleted = serverHandleGet(membership, localFiles, request)
+	// 		case "delete":
+	// 			requestCompleted = serverHandleDelete(membership, localFiles, request)
+	// 		case "ls":
+	// 			requestCompleted = serverHandleLs(membership, localFiles, request)
+	// 		}
 
-		findFailedNodes(membership, localFiles)
-		for requestID, finishTime := range completedRequests {
-			currTime := time.Now().UnixNano() / int64(time.Millisecond)
-			if currTime-finishTime > TIMEOUT_MS {
-				delete(completedRequests, requestID)
-			}
-		}
-	}
+	// 		if requestCompleted {
+	// 			completedRequests[request.ID] = time.Now().UnixNano() / int64(time.Millisecond)
+	// 		}
+	// 	}
+
+	// 	findFailedNodes(membership, localFiles)
+	// 	for requestID, finishTime := range completedRequests {
+	// 		currTime := time.Now().UnixNano() / int64(time.Millisecond)
+	// 		if currTime-finishTime > TIMEOUT_MS {
+	// 			delete(completedRequests, requestID)
+	// 		}
+	// 	}
+	// }
 }
 
-func serverHandlePut(membership *Membership, localFiles *LocalFiles, request *Request) bool {
-	hostname, _ := os.Hostname()
-	fileGroup, contains := localFiles.Files[request.FileName]
-
-	// Only thing we do for the put when the node is the fileMaster is send the info to leader
-	if contains && fileGroup[0] == hostname {
-		pendingResponse := PendingResponse{
-			ID:        request.ID,
-			Timestamp: localFiles.UpdateTimes[request.FileName],
-			NodeList:  fileGroup,
-		}
-
-		jsonPending, _ := json.Marshal(pendingResponse)
-		nodeMessage := NodeMessage{
-			MsgType:  "PendingPut",
-			FileName: "",
-			SrcHost:  "",
-			Data:     jsonPending,
-		}
-
-		leaderHostName := membership.List[0]
-		contactNode(leaderHostName, nodeMessage)
-		
-		// Write the list to the client as well
-		tcpAddr, _ := net.ResolveTCPAddr("tcp", request.SrcHost+":"+CLIENT_PORT)
-		socket, _ := net.DialTCP("tcp", nil, tcpAddr)
-		jsonResponse, _ := json.Marshal(fileGroup)
-		socket.Write(jsonResponse)
-
-		return true
+// Goroutine that will listen for incoming RPC requests made from any client
+func clientRequestListener() {
+	clientRequestRPC := new(ClientRequest)
+	err := rpc.Register(clientRequestRPC)
+	if err != nil {
+		log.Fatalf("Format of service ClientRequest isn't correct. %s", err)
 	}
 
-	return contains
+	rpc.HandleHTTP()
+	listener, _ := net.Listen("tcp", ":"+CLIENT_RPC_PORT)
+	defer listener.Close()
+
+	http.Serve(listener, nil)
 }
 
-func serverHandleGet(membership *Membership, localFiles *LocalFiles, request *Request) bool {
-	hostname, _ := os.Hostname()
-	fileGroup, contains := localFiles.Files[request.FileName]
-
-	// If the current node contains the file and the node is the file master, send the file
-	if contains && fileGroup[0] == hostname {
-		socket := establishTCP(request.SrcHost)
-		if socket == nil {
-			return false
-		}
-		socket.Write([]byte("pass"))
-		
-		// Open and send the file from the cs-425-mp3 directory
-		localFilePath := PARENT_DIR + "/" + request.FileName
-		file, err := os.Open(localFilePath)
-		if err != nil {
-			log.Infof("Unable to open local file: %s", err)
-			return false
-		}
-		
-		file.Seek(0, io.SeekStart)
-		_, err = io.Copy(socket, file)
-		if err != nil {
-			log.Info("Server could not write the fileto the client!")
-			return false
-		}
-
-		return true
+// Goroutine that will listen for incoming RPC calls from other servers
+func serverResponseListener() {
+	serverResponseRPC := new(ServerCommunication)
+	err := rpc.Register(serverResponseRPC)
+	if err != nil {
+		log.Fatalf("Format of service ServerCommunication isn't correct. %s", err)
 	}
 
-	return contains
+	rpc.HandleHTTP()
+	listener, _ := net.Listen("tcp", ":"+SERVER_RPC_PORT)
+	defer listener.Close()
+
+	http.Serve(listener, nil)
 }
 
-func serverHandleDelete(membership *Membership, localFiles *LocalFiles, request *Request) bool {
-	if _, contains := localFiles.Files[request.FileName]; contains {
-		delete(localFiles.Files, request.FileName)
-		delete(localFiles.UpdateTimes, request.FileName)
-
-		err := os.Remove(PARENT_DIR + "/" + request.FileName)
-		if err != nil {
-			log.Infof("Unable to remove file %s from local node!", request.FileName)
-			return false
-		}
-
-		pendingResponse := &PendingResponse{
-			ID:        request.ID,
-			Timestamp: 0,
-			NodeList:  []string{},
-		}
-
-		jsonPending, _ := json.Marshal(pendingResponse)
-		nodeMessage := NodeMessage{
-			MsgType:  "PendingDelete",
-			FileName: "",
-			SrcHost:  "",
-			Data:     jsonPending,
-		}
-
-		leaderHostName := membership.List[0]
-		contactNode(leaderHostName, nodeMessage)
-		return true
+// Goroutine that will listen for incoming RPC connection to transfer a file
+func fileTransferListener() {
+	serverResponseRPC := new(ServerCommunication)
+	err := rpc.Register(serverResponseRPC)
+	if err != nil {
+		log.Fatalf("Format of service ServerCommunication isn't correct. %s", err)
 	}
 
-	return false
-}
+	rpc.HandleHTTP()
+	listener, _ := net.Listen("tcp", ":"+FILE_RPC_PORT)
+	defer listener.Close()
 
-func serverHandleLs(membership *Membership, localFiles *LocalFiles, request *Request) bool {
-	hostname, _ := os.Hostname()
-	fileGroup, contains := localFiles.Files[request.FileName]
-
-	// If the current node contains the file and the node is the file master
-	if contains && fileGroup[0] == hostname {
-		socket := establishTCP(request.SrcHost)
-		if socket == nil {
-			return false
-		}
-
-		// Send the string to the client
-		pendingResponse := PendingResponse{
-			ID:        request.ID,
-			Timestamp: 0,
-			NodeList:  fileGroup,
-		}
-
-		jsonPending, _ := json.Marshal(pendingResponse)
-		nodeMessage := NodeMessage{
-			MsgType:  "PendingLs",
-			FileName: "",
-			SrcHost:  "",
-			Data:     jsonPending,
-		}
-
-		leaderHostName := membership.List[0]
-		contactNode(leaderHostName, nodeMessage)
-		return true
-	}
-
-	return contains
+	http.Serve(listener, nil)
 }
 
 // Helper method that will contact a specified node and send a node message
