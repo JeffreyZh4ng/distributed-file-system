@@ -1,34 +1,34 @@
 package server
 
 var FILE_RPC_PORT string = "7000"
+var FOLDER_NAME string = "nodeFiles/"
 
 // Holds arguments to be passed to service request in RPC call
-type FileTransferArgs struct {
-    FileName string
+type FileTransferRequest struct {
+	FileName string,
+	Data []byte,
 }
 
 // Hold arguments to be returned to the client
-type ResponseArgs struct {
-        SourceHost string
-        Hosts   []string
-        Data    []byte
+type FileTransferResponse struct {
+	Data []byte,
 }
 
 // Represents service Request
 type FileTransfer int
 
-func (t *FileTransfer) SendFile(request RequestArgs, response *ResponseArgs) error {
-	// This function will look for the file in the system. If it doesnt exist,
-	// The leader will return the nodes to write to and if the user need confirmation
-	// The client will then RPC connect to the nodes and write the file the client
-	// Will handle the confirmation
+func (t *FileTransfer) SendFile(request FileTransferRequest, _) error {
+	filePath := FOLDER_NAME + request.FileName
+	fileDes, _ := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
+	fileDes.Write(request.Data)
+
 	return nil
 }
 
-func (t *FileTransfer) GetFile(request RequestArgs, response *ResponseArgs) error {
-	// This function will look for the file in the system. If it doesnt exist,
-	// The leader will return the nodes to write to and if the user need confirmation
-	// The client will then RPC connect to the nodes and write the file the client
-	// Will handle the confirmation
+func (t *FileTransfer) GetFile(request FileTransferRequest, response *FileTransferResponse) error {
+	filePath := FOLDER_NAME + request.FileName
+	fileContents, err := ioutil.ReadFile(filePath)
+	*response.Data = fileContents
+ 
 	return nil
 }

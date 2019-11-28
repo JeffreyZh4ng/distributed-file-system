@@ -2,9 +2,10 @@ package server
 
 var SERVER_RPC_PORT string = "6000"
 
+// We need HostList. Get and List will send over the list of hosts with the file
 type ServerRequestArgs struct {
 	ID string,
-	Hostname string,
+	HostList []string,
 }
 
 // Represents service Request

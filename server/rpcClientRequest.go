@@ -32,35 +32,76 @@ func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) er
 	// The leader will return the nodes to write to and if the user need confirmation
 	// The client will then RPC connect to the nodes and write the file the client
 	// Will handle the confirmation
+	success, hostList := handleClientRequest("Get", requestFile)
+	*response.Success = success
+
+	if success {
+		randomHostList = []string
+
+		for {
+			randIndex = rand.Intn(len(membership.List))
+			nodeName := membership.List[randIndex]
+
+			for i := 0; i < len(randomHostList); i++ {
+				if randomHostList[i] == nodeName {
+					continue
+				}
+			}
+			
+			if len(randomHostList) == 4 {
+				*response.hostList = randomHostList
+				return nil
+			}
+		}
+	} 
+	
+	*response.hostList = hostList
 	return nil
 }
 
 func (t *ClientRequest) Get(requestFile string, response *ClientResponseArgs) error {
 	// This function will return a response of which node has the specified file
 	// The client will then connect to that server with RPC to retrieve the file
+	success, hostList := handleClientRequest("Get", requestFile)
+	*response.Success = success
+	*response.HostList = hostList
+
 	return nil
 }
 
 func (t *ClientRequest) Delete(requestFile string, response *ClientResponseArgs) error {
-	// This will call a function that will add the request into the queue then it will wait
-	// For a response. After a timeout, the function will return with the response of the request
+	success, hostList := handleClientRequest("Delete", requestFile)
+	*response.Success = success
+	*response.HostList = hostList
 
-	// Add the request into the the pending request list inside of membeship
+	return nil
+}
+
+func (t *ClientRequest) List(requestFile string, response *ClientResponseArgs) error {
+	success, hostList := handleClientRequest("List", requestFile)
+	*response.Success = success
+	*response.HostList = hostList
+
+	return nil
+}
+
+func handleClientRequest(requestType string, requestFile string) (success bool, hostList []string) {
+	// Will create a unique ID name with the curent VM name and a counter for how many client
+	// Requests have been created from this node
 	hostname, _ := os.Hostname()
 	requestId := hostname + strconv.Itoa(requestCount)
 	requestCount++
 
 	request := &Request{
 		ID:       requestId,
-		Type:     "Delete",
+		Type:     requestType,
 		SrcHost:  hostname,
 		FileName: requestFile,
 	}
 	Membership.Pending = append(Membership.Pending, request)
 
-	// Start listening for incoming RPC calls. If none arrive within the specified timeout, assume
-	// No file was found. fileSystem.go will be listening to the different ports. We need to make a function
-	// in that file that we call from here that listens to that connection for around five seconds
+	// Will check if the node has recieved a response from another server 
+	// Indicating that that node has the file
 	startTime := time.Now().UnixNano() / int64(time.Millisecond)
 	ticker := time.NewTicker(500 * time.Millisecond)
 	
@@ -68,11 +109,9 @@ func (t *ClientRequest) Delete(requestFile string, response *ClientResponseArgs)
 		<-ticker.C
 
 		// If the leader recieved a response from a server that the file was found
-		if hostname, contains := ServerResponses[]; contains {
-			*response.Success = true
-			*response.Hostlist = [hostname]
-			
-			return nil
+		if hostList, contains := ServerResponses[requestId]; contains {
+			delete(ServerResponses, requestId)
+			return hostList
 		}
 
 		if currTime-startTime > REQUEST_TIMEOUT {
@@ -80,14 +119,5 @@ func (t *ClientRequest) Delete(requestFile string, response *ClientResponseArgs)
 		}
 	}
 
-	*response.Success = false
-	*response.HostList = []
-
-	return nil
-}
-
-func (t *ClientRequest) List(requestFile string response *ClientResponseArgs) error {
-	// This function will get a list of all the files from a server
-	// It will return if the file was found
-	return nil
+	return []string
 }

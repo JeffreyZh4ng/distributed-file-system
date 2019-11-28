@@ -19,6 +19,8 @@ type LocalFiles struct {
 
 var FINISHED_REQUEST_TTL int = 5000
 var NUM_REPLICAS int = 4
+
+// Need to keep a global file list and server response map
 var ServerResponses map[string]string
 var localFiles *LocalFiles
 
