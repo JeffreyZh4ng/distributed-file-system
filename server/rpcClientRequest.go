@@ -25,6 +25,8 @@ type Request struct {
 
 var CLIENT_RPC_PORT string = "5000"
 var REQUEST_TIMEOUT int = 5000
+
+// Global that keeps track of how many requests have been created by this node
 var requestCount int = 0
 
 func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) error {
@@ -32,10 +34,11 @@ func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) er
 	// The leader will return the nodes to write to and if the user need confirmation
 	// The client will then RPC connect to the nodes and write the file the client
 	// Will handle the confirmation
-	success, hostList := handleClientRequest("Get", requestFile)
+	success, hostList := handleClientRequest("Put", requestFile)
 	*response.Success = success
 
-	if success {
+	// If the file was not found, pick four random nodes to shard the file to
+	if !success {
 		randomHostList = []string
 
 		for {
@@ -72,7 +75,7 @@ func (t *ClientRequest) Get(requestFile string, response *ClientResponseArgs) er
 func (t *ClientRequest) Delete(requestFile string, response *ClientResponseArgs) error {
 	success, hostList := handleClientRequest("Delete", requestFile)
 	*response.Success = success
-	*response.HostList = hostList
+	*response.HostList = []string
 
 	return nil
 }

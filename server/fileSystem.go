@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"sort"
 	"time"
 )
 
@@ -26,54 +27,51 @@ var localFiles *LocalFiles
 
 // go routine that will handle requests and resharding of files from failed nodes
 func FileSystemManager() {
+	localFiles = &server.LocalFiles{
+		Files: map[string][]string{},
+		UpdateTimes: map[string]int64{},
+	}
+
 	go clientRequestListener()
 	go serverResponseListener()
 	go fileTransferListener()
 
-	// localFiles = &server.LocalFiles{
-	// 	Files: map[string][]string{},
-	// 	UpdateTimes: map[string]int64{},
-	// }
+	completedRequests := make(map[int]int64)
+	ticker := time.NewTicker(1000 * time.Millisecond)
 
-	// completedRequests := make(map[int]int64)
-	// ticker := time.NewTicker(1000 * time.Millisecond)
+	for {
+		<-ticker.C
 
-	// for {
-	// 	<-ticker.C
+		// Check if there are any requests in the membership list
+		for _, request := range membership.Pending {
 
-	// 	// Check if there are any requests in the membership list
-	// 	for _, request := range membership.Pending {
+			// If the request is in the complete list or the node doesnt have the file, continue
+			_, isRequestFinished := completedRequests[request.ID]
+			nodeGroup, nodeContainsFile := LocalFiles.Files[request.FileName]
+			if !nodeContainsFile || isRequestFinished {
+				continue
+			}
 
-	// 		// If the request is in the complete list then continue
-	// 		if _, contains := completedRequests[request.ID]; contains {
-	// 			continue
-	// 		}
+			// We let the delete fall through to the default case
+			switch request.Type {
+			case "Delete":
+				deleteLocalFile(request.FileName)
+			case default:
+				serverHandleLs(request)
+				break
+			}
 
-	// 		requestCompleted := false
-	// 		switch request.Type {
-	// 		case "put":
-	// 			requestCompleted = serverHandlePut(membership, localFiles, request)
-	// 		case "get":
-	// 			requestCompleted = serverHandleGet(membership, localFiles, request)
-	// 		case "delete":
-	// 			requestCompleted = serverHandleDelete(membership, localFiles, request)
-	// 		case "ls":
-	// 			requestCompleted = serverHandleLs(membership, localFiles, request)
-	// 		}
+			completedRequests[request.ID] = time.Now().UnixNano() / int64(time.Millisecond)
+		}
 
-	// 		if requestCompleted {
-	// 			completedRequests[request.ID] = time.Now().UnixNano() / int64(time.Millisecond)
-	// 		}
-	// 	}
-
-	// 	findFailedNodes(membership, localFiles)
-	// 	for requestID, finishTime := range completedRequests {
-	// 		currTime := time.Now().UnixNano() / int64(time.Millisecond)
-	// 		if currTime-finishTime > TIMEOUT_MS {
-	// 			delete(completedRequests, requestID)
-	// 		}
-	// 	}
-	// }
+		findFailedNodes()
+		for requestID, finishTime := range completedRequests {
+			currTime := time.Now().UnixNano() / int64(time.Millisecond)
+			if currTime-finishTime > TIMEOUT_MS {
+				delete(completedRequests, requestID)
+			}
+		}
+	}
 }
 
 // Goroutine that will listen for incoming RPC requests made from any client
@@ -121,78 +119,87 @@ func fileTransferListener() {
 	http.Serve(listener, nil)
 }
 
-// Helper method that will contact a specified node and send a node message
-func contactNode(nodeHostName string, leaderMessage NodeMessage) {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", nodeHostName+":"+SERVER_PORT)
+// Function that deletes data for a file from the server and the localFiles struct
+func deleteLocalFile(fileName string) {
+	delete(localFiles.Files, fileName)
+	delete(localFiles.UpdateTimes, fileName)
+
+	err := os.Remove(FOLDER_NAME + fileName)
 	if err != nil {
-		log.Info("Could not resolve the hostname!")
+		log.Infof("Unable to remove file %s from local node!", fileName)
 		return
 	}
-
-	socket, err := net.DialTCP("tcp", nil, tcpAddr)
-	defer socket.Close()
-	if err != nil {
-		log.Info("Server could not dial the client!")
-		return
-	}
-
-	jsonMessage, _ := json.Marshal(leaderMessage)
-	socket.Write(jsonMessage)
 }
 
-// Helper that establishes a TCP connection
-func establishTCP(hostname string) *net.TCPConn {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", hostname+":"+SERVER_PORT)
-	if err != nil {
-		log.Info("Could not resolve the hostname!")
-		return nil
-	}
-
-	socket, err := net.DialTCP("tcp", nil, tcpAddr)
-	if err != nil {
-		log.Info("Server could not dial the client!")
-		return nil
-	}
-
-	return socket
-}
-
-func findFailedNodes(membership *Membership, localFiles *LocalFiles) {
+// Function that will send an RPC call to the leader indicating that the request has been fulfilled
+// This RPC will only be sent out if the current node is the leader of the nodeGroup (Lowest ID)
+func fileFoundRCP(request *Request) {
 	hostname, _ := os.Hostname()
-	currentFiles := map[string]int{}
-	for _, host := range membership.List {
-		currentFiles[host] = 0
+	fileGroup, _ := localFiles.Files[request.FileName]
+	if fileGroup[0] != hostname {
+		return
+	}
+
+	client, err := rpc.DialHTTP("tcp", request.SrcHost+":"+SERVER_RPC_PORT)
+	if err != nil {
+		log.Fatalf("Error in dialing. %s", err)
+	}
+
+	args := &ServerRequestArgs{
+		ID: request.ID,
+		HostList: fileGroup,
+	}
+
+	err = client.Call("ServerCommunication.FileFound", args, nil)
+	if err != nil {
+		log.Fatalf("error in ServerCommunication", err)
+	}
+}
+
+// This will find all the files that need to be resharded to another node
+func findFailedNodes() {
+	hostname, _ := os.Hostname()
+	aliveNodes := map[string]int{}
+	for _, host := range Membership.List {
+		aliveNodes[host] = 0
 	}
 
 	// Loop through every node in every file stored in the local system
-	for fileName, fileGroup := range localFiles.Files {
+	for fileName, fileGroup := range LocalFiles.Files {
 
-		runningNodes := []string{}
+		nodeGroupAliveNodes := []string{}
 		for _, node := range fileGroup {
 
-			if _, contains := currentFiles[node]; !contains {
-				runningNodes = append(runningNodes, node)
+			if _, contains := aliveNodes[node]; contains {
+				nodeGroupAliveNodes = append(fileGroupAliveNodes, node)
 			}
 		}
 
-		// If the current node is the lowest ID node that has not filed, reshard
-		if runningNodes[0] == hostname {
-			reshardFiles(membership, runningNodes, fileName)
+		// If there are less than NUM_REPLICAS of a file, and the current node is the groupMaster, reshard
+		if len(fileGroupAliveNodes) < NUM_REPLICAS && nodeGroupAliveNodes[0] == hostname {
+			reshardFiles(fileName, nodeGroupAliveNodes)
 		}
 	}
 }
 
-func reshardFiles(membership *Membership, runningNodes []string, fileName string) {
+// This will randomly pick another node that doesnt have the file to reshard the file to
+func reshardFiles(fileName string, nodeGroupAliveNodes []string) {
 	hostname, _ := os.Hostname()
-	for i := 0; i < NUM_REPLICAS-len(runningNodes); i++ {
+
+	var newNodeGroup []string
+	newNodeGroup = copy(nodeNodeGroup, nodeGroupAliveNodes)
+	reshardTargetNodes := []string{}
+
+	for i := 0; i < NUM_REPLICAS-len(nodeGroupAliveNodes); i++ {
 
 		// Disgusting random function that will loop until it finds a node not in the runningNodes list
 		randIndex := 0
+
 		for {
 			randIndex = rand.Intn(len(membership.List))
-			nodeName := membership.List[randIndex]
-			for i := 0; i < len(runningNodes); i++ {
-				if runningNodes[i] == nodeName {
+			nodeName := Membership.List[randIndex]
+			for i := 0; i < len(nodeGroupAliveNodes); i++ {
+				if nodeGroupAliveNodes[i] == nodeName {
 					continue
 				}
 			}
@@ -200,25 +207,53 @@ func reshardFiles(membership *Membership, runningNodes []string, fileName string
 			break
 		}
 
-		loadedFile, _ := ioutil.ReadFile(PARENT_DIR + "/" + fileName)
-		nodeMessage := NodeMessage{
-			MsgType:  "ReshardRequest",
-			FileName: fileName,
-			SrcHost:  hostname,
-			Data:     loadedFile,
-		}
+		randomNode := Membership.List[randIndex]
+		reshardTargetNodes = append(reshardTargetNodes, randomNode)
+		newNodeGroup = append(newNodeGroup, randomNode)
+		sort.Strings(newNodeGroup)
+	}
 
+	loadedFile, _ := ioutil.ReadFile(PARENT_DIR + "/" + fileName)
+	fileTransferArgs := &FileTransferRequest{
+		FileName: fileName,
+		FileGroup: newNodeGroup,
+		Data: loadedFile,
+	}
+	for _, node := range reshardTargetNodes {
+		fileTransferRPC(fileTransferArgs)
+	}
 
-		randomNode := membership.List[randIndex]
-		socket := establishTCP(randomNode)
-		if socket == nil {
-			log.Info("Could not establish TCP while resharding")
-		}
+	updateNodeGroupArgs := &UpdateNodeGroupRequest{
+		FileName: fileName,
+		NodeGroup: newNodeGroup,
+	}
+	for _, node := range nodeGroupAliveNodes {
+		updateNodeGroupRPC(updateNodeGroupArgs)
+	}
+}
 
-		jsonMessage, _ := json.Marshal(nodeMessage)
-		_, err := socket.Write(jsonMessage)
-		if err != nil {
-			log.Info("Could not write file while resharding")
-		}
+// Helper that will call the SendFile RPC and will send a file to a node
+func fileTransferRPC(transferHost string, fileTransferArgs *FileTransferRequest) {
+	client, err := rpc.DialHTTP("tcp", rtransferHost+":"+FILE_RPC_PORT)
+	if err != nil {
+		log.Fatalf("Error in dialing. %s", err)
+	}
+
+	err = client.Call("FileTransfer.SendFile", fileTransferArgs, nil)
+	if err != nil {
+		log.Fatalf("error in ServerCommunication", err)
+	}
+}
+
+// Helper that will call the UpdateNodeGroup RPC and will update the nodeGroup of a file at a node
+func updateNodeGroupRPC(updateHost string, updateNodeGroupArgs *UpdateNodeGroupRequest) {
+	client, err := rpc.DialHTTP("tcp", updateHost+":"+FILE_RPC_PORT)
+	if err != nil {
+		log.Fatalf("Error in dialing. %s", err)
+	}
+
+	err = client.Call("FileTransfer.UpdateNodeGroup", updateNodeGroupArgs, nil)
+	if err != nil {
+		log.Fatalf("error in ServerCommunication", err)
 	}
 }
