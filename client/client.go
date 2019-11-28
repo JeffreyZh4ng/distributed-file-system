@@ -3,15 +3,13 @@ package client
 import (
 	"encoding/json"
 	log "github.com/sirupsen/logrus"
-	"cs-425-mp3/rpc"
+	"cs-425-mp3/server"
 	"io"
 	"net"
 	"os"
 	"strconv"
 )
 
-var CLIENT_PORT string = "6000"
-var FILE_PORT string = "7000"
 var PARENT_DIR string = "nodeFiles"
 
 // Function that will try to dial the lowest number server possible

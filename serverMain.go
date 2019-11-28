@@ -14,8 +14,7 @@ func main() {
 
 	// Start a goroutine to handle sending out heartbeats
 	go server.HeartbeatManager()
-	// go server.FileSystemManager(localFiles)
-	// go server.TCPManager(localFiles)
+	go server.FileSystemManager()
 
 	for {
 		reader := bufio.NewReader(os.Stdin)
@@ -26,17 +25,16 @@ func main() {
 		case "id":
 			log.Infof("Current node ID: %s", hostname)
 		case "list":
-			// This will not work anymore
-			log.Infof("Current list:\n%s", server.GetMembershipList())
-		// case "store":
-			// fileList := []string{}
-			// for fileName, _ := range localFiles.Files {
-			// 	fileList = append(fileList, fileName)
-			// }
-			// log.Infof("Files stored in the server:\n%s", fileList)
+			log.Infof("Current list:\n%s", server.Membership.List)
+		case "store":
+			fileList := []string{}
+			for fileName, _ := range server.LocalFiles.Files {
+				fileList = append(fileList, fileName)
+			}
+			log.Infof("Files stored in the server:\n%s", fileList)
 		case "leave":
 			log.Infof("Node %s is leaving the network!", hostname)
-			server.LeaveNetwork()
+			server.Membership.Data[hostname] = 0
 			time.Sleep(2 * time.Second)
 			os.Exit(0)
 		default:
