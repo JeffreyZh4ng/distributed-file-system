@@ -45,12 +45,14 @@ func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) er
 			randIndex = rand.Intn(len(membership.List))
 			nodeName := membership.List[randIndex]
 
+			// If the current random pick matches one that was already picked, continue
 			for i := 0; i < len(randomHostList); i++ {
 				if randomHostList[i] == nodeName {
 					continue
 				}
 			}
 			
+			randomHostList = append(randomHostList, nodeName)
 			if len(randomHostList) == 4 {
 				*response.hostList = randomHostList
 				return nil
