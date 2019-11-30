@@ -76,7 +76,7 @@ func FileSystemManager() {
 
 // Goroutine that will listen for incoming RPC requests made from any client
 func clientRequestListener() {
-	server = rpc.NewServer()
+	server := rpc.NewServer()
 	clientRequestRPC := new(ClientRequest)
 	err := server.Register(clientRequestRPC)
 	if err != nil {
@@ -97,7 +97,7 @@ func clientRequestListener() {
 
 // Goroutine that will listen for incoming RPC calls from other servers
 func serverResponseListener() {
-	server = rpc.NewServer()
+	server := rpc.NewServer()
 	serverResponseRPC := new(ServerCommunication)
 	err := server.Register(serverResponseRPC)
 	if err != nil {
@@ -118,7 +118,7 @@ func serverResponseListener() {
 
 // Goroutine that will listen for incoming RPC connection to transfer a file
 func fileTransferListener() {
-	server = rpc.NewServer()
+	server := rpc.NewServer()
 	fileTransferRPC := new(FileTransfer)
 	err := server.Register(fileTransferRPC)
 	if err != nil {
