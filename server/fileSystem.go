@@ -145,7 +145,7 @@ func deleteLocalFile(fileName string) {
 	delete(LocalFiles.Files, fileName)
 	delete(LocalFiles.UpdateTimes, fileName)
 
-	err := os.Remove(FOLDER_NAME + fileName)
+	err := os.Remove(SERVER_FOLDER_NAME + fileName)
 	if err != nil {
 		log.Infof("Unable to remove file %s from local node!", fileName)
 		return
@@ -232,7 +232,7 @@ func reshardFiles(fileName string, fileGroupAliveNodes []string) {
 		sort.Strings(newFileGroup)
 	}
 
-	loadedFile, _ := ioutil.ReadFile(FOLDER_NAME + fileName)
+	loadedFile, _ := ioutil.ReadFile(SERVER_FOLDER_NAME + fileName)
 	fileTransferArgs := &FileTransferRequest{
 		FileName: fileName,
 		FileGroup: newFileGroup,
