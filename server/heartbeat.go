@@ -212,7 +212,6 @@ func processNewMembershipList(newMembership *MembershipList) {
 	for i := 0; i < len(newMembership.List); i++ {
 		nextHostname := newMembership.List[i]
 		newPingTime := newMembership.Data[nextHostname]
-		log.Infof("newping %s", newPingTime)
 
 		// If it finds a node that is not in the data map, add it to list and map
 		if pingTime, contains := Membership.Data[nextHostname]; !contains {
@@ -221,10 +220,6 @@ func processNewMembershipList(newMembership *MembershipList) {
 
 			Membership.List = append(Membership.List, nextHostname)
 			sort.Strings(Membership.List)
-
-		// This will only happen if the node has left the network
-		} else if newPingTime < 0 {
-			Membership.Data[nextHostname] = -1 * newMembership.Data[nextHostname]
 
 		// If the new Membership has a more recent time, update it
 		} else if pingTime < newPingTime {
@@ -241,6 +236,10 @@ func processNewMembershipList(newMembership *MembershipList) {
 				sort.Strings(Membership.List)
 				log.Infof("Recieved updated time from node %s. Adding back to list", nextHostname)
 			}
+			
+		// This will only happen if the node has left the network
+		} else if newPingTime < 0 {
+			Membership.Data[nextHostname] = -1 * newMembership.Data[nextHostname]
 		}
 	}
 
