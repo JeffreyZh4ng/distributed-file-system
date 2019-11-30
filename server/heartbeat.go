@@ -91,6 +91,7 @@ func sendHeartbeats(wg *sync.WaitGroup) {
 	hostName, _ := os.Hostname()
 	index := findHostnameIndex(hostName)
 	lastIndex := index
+	log.Infof("Membership:\n%s", Membership.Data)
 
 	// Sends two heartbeats to its immediate successors
 	for i := 1; i <= 2; i++ {
@@ -142,6 +143,7 @@ func removeExitedNodes() {
 	tempList := Membership.List[:0]
 	rootName, _ := os.Hostname()
 
+	log.Infof("Node Data:\n%s", Membership.Data)
 	for _, hostName := range Membership.List {
 		lastPing := Membership.Data[hostName]
 		if lastPing < 0 {
@@ -222,7 +224,7 @@ func processNewMembershipList(newMembership *MembershipList) {
 			sort.Strings(Membership.List)
 
 		// If the new Membership has a more recent time, update it
-		} else if pingTime < newPingTime && int64(math.Abs(float64(pingTime))) != newPingTime {
+		} else if math.Abs(float64(pingTime)) < math.Abs(float64(newPingTime)) {
 			Membership.Data[nextHostname] = newPingTime
 
 			// If the hostname is not in the list but it's in the data map,
