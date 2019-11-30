@@ -91,7 +91,6 @@ func sendHeartbeats(wg *sync.WaitGroup) {
 	hostName, _ := os.Hostname()
 	index := findHostnameIndex(hostName)
 	lastIndex := index
-	log.Infof("Membership:\n%s", Membership.Data)
 
 	// Sends two heartbeats to its immediate successors
 	for i := 1; i <= 2; i++ {
@@ -143,15 +142,14 @@ func removeExitedNodes() {
 	tempList := Membership.List[:0]
 	rootName, _ := os.Hostname()
 
-	log.Infof("Node Data:\n%s", Membership.Data)
 	for _, hostName := range Membership.List {
 		lastPing := Membership.Data[hostName]
 		if lastPing < 0 {
 			if hostName != rootName {
 				log.Infof("Node %s left the network!", hostName)
 			} else {
+				time.Sleep(0.5 * time.Second)
 				os.Exit(0)
-				// tempList = append(tempList, hostName)
 			}
 		} else if !(currTime-lastPing > NODE_FAIL_TIMEOUT) {
 			tempList = append(tempList, hostName)
@@ -211,6 +209,8 @@ func openUDPConn() (*net.UDPConn) {
 
 // Loop through the new Membership and update the timestamps in the current node.
 func processNewMembershipList(newMembership *MembershipList) {
+	log.Infof("New Mem %s", newMembership.Data)
+
 	for i := 0; i < len(newMembership.List); i++ {
 		nextHostname := newMembership.List[i]
 		newPingTime := newMembership.Data[nextHostname]
