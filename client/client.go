@@ -59,7 +59,7 @@ func makeFileTransferRequest(hostname string, requestType string, request *serve
 	}
 	defer client.Close()
 		
-	var response []byte
+	var response server.TransferResult
 	err = client.Call(requestType, &request, &response)
 	if err != nil {
 		log.Fatalf("error in Request", err)
