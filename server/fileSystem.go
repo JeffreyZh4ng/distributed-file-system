@@ -101,7 +101,7 @@ func clientRequestListener() {
 // Goroutine that will listen for incoming RPC calls from other servers
 func serverResponseListener() {
 	ServerRPCServer = rpc.NewServer()
-	serverResponseRPC := new(ServerCommunication)
+	ServerResponseRPC := new(ServerCommunication)
 	err := ServerRPCServer.Register(serverResponseRPC)
 	if err != nil {
 		log.Fatalf("Format of service ServerCommunication isn't correct. %s", err)
@@ -111,7 +111,7 @@ func serverResponseListener() {
 	oldMux := http.DefaultServeMux
     mux := http.NewServeMux()
     ServerRPCServer.DefaultServeMux = mux
-	serverRPCServer.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
+	ServerRPCServer.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 	http.DefaultServeMux = oldMux
 
 	listener, _ := net.Listen("tcp", ":"+SERVER_RPC_PORT)
