@@ -7,7 +7,7 @@ import (
 )
 
 var FILE_RPC_PORT string = "7000"
-var FOLDER_NAME string = "nodeFiles/"
+var SERVER_FOLDER_NAME string = "serverFiles/"
 
 // Holds arguments to be passed to service request in RPC call
 type FileTransferRequest struct {
@@ -27,7 +27,7 @@ type UpdateFileGroupRequest struct {
 type FileTransfer int
 
 func (t *FileTransfer) SendFile(request FileTransferRequest, _ *string) error {
-	filePath := FOLDER_NAME + request.FileName
+	filePath := SERVER_FOLDER_NAME + request.FileName
 	fileDes, _ := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
 	fileDes.Write(request.Data)
 
@@ -38,7 +38,7 @@ func (t *FileTransfer) SendFile(request FileTransferRequest, _ *string) error {
 }
 
 func (t *FileTransfer) GetFile(request FileTransferRequest, data *[]byte) error {
-	filePath := FOLDER_NAME + request.FileName
+	filePath := SERVER_FOLDER_NAME + request.FileName
 	fileContents, _ := ioutil.ReadFile(filePath)
 	*data = fileContents
  

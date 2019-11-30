@@ -5,22 +5,28 @@ import (
 	log "github.com/sirupsen/logrus"
 	"cs-425-mp3/server"
 	"io"
+	"io/ioutil"
+	"math/rand"
 	"net"
 	"os"
 	"strconv"
 )
 
-var PARENT_DIR string = "nodeFiles"
+var CLIENT_FOLDER_NAME string = "clientFiles/"
 
 // Function that will try to dial the lowest number server possible
-func initClientRequest(requestType string, args *server.RequestArgs) (*server.ResponseArgs) {
+func initClientRequest(requestType string, fileName string) (*server.ClientResponseArgs) {
 	for i := 1; i <= 10; i++ {
 		numStr := strconv.Itoa(i)
+		if len(numStr) == 1 {
+			numStr = "0" + numStr
+		}
+
 		connectName := "fa19-cs425-g84-" + numStr + ".cs.illinois.edu"
-		response := dialServer(connectName, requestType, args)
+		response := makeClientRequest(connectName, requestType, args)
 
 		if response != nil {
-			log.Infof("Connected to server: %s", connectName)
+			log.Infof("Connected to server %s and recieved a response", connectName)
 			return response
 		}
 	} 
@@ -30,14 +36,15 @@ func initClientRequest(requestType string, args *server.RequestArgs) (*server.Re
 }
 
 // Function that dials a specific server
-func dialServer(hostname string, requestType string, args *server.RequestArgs) (*server.ResponseArgs) {
+func makeClientRequest(hostname string, requestType string, fileName []string) (*server.ClientResponseArgs) {
 	client, err := rpc.DialHTTP("tcp", hostname + ":" + SERVER_PORT_NUM)
 	if err != nil {
 		return nil
 	}
+	defer client.Close()
 
-	var response handleRPC.ResponseArgs
-	err = client.Call(requestType, args, &response)
+	var response server.ClientResponseArgs
+	err = client.Call(requestType, fileName, &response)
 	if err != nil {
 		log.Fatalf("error in Request", err)
 		return nil
@@ -46,159 +53,85 @@ func dialServer(hostname string, requestType string, args *server.RequestArgs) (
 	return &response
 }
 
+// Function that will dial a server to request or send a file
+func makeFileTransferRequest(hostname string, requestType string, request server.FileTransferRequest) 
+		(response []byte) {
 
-func initRequest(requestType string, fileName string) {
-	localHost, _ := os.Hostname()
-
-	for i := 1; i <= 10; i++ {
-		numStr := strconv.Itoa(i)
-		if len(numStr) == 1 {
-			numStr = "0" + numStr
-		}
-		connectName := "fa19-cs425-g84-" + numStr + ".cs.illinois.edu"
-
-		socket := establishTCP(connectName, CLIENT_PORT)
-		if socket == nil {
-			log.Infof("Could not connect to %s", connectName)
-			continue
-		}
-
-		clientRequest := ClientRequest{
-			MsgType:  requestType,
-			FileName: fileName,
-			SrcHost:  localHost,
-		}
-
-		jsonRequest, _ := json.Marshal(clientRequest)
-		socket.Write(jsonRequest)
-		return
-	}
-	
-	log.Fatal("Server could not reach any server!")
-}
-
-// Helper that establishes a TCP connection
-func establishTCP(hostname string, portNumber string) (*net.TCPConn) {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", hostname+":"+portNumber)
+	client, err := rpc.DialHTTP("tcp", hostname + ":" + FILE_RPC_PORT)
 	if err != nil {
-		log.Info("Could not resolve the hostname!")
 		return nil
 	}
-
-	socket, err := net.DialTCP("tcp", nil, tcpAddr)
+	defer client.Close()
+		
+	var response []byte
+	err = client.Call(requestType, &request, &response)
 	if err != nil {
-		log.Info("Server could not dial the client!")
+		log.Fatalf("error in Request", err)
 		return nil
 	}
-
-	return socket
-}
-
-func ClientGet(args []string) {
-	hostname, _ := os.Hostname()
-	fileName := args[0]
-	initRequest("get", fileName)
-
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", hostname+":"+FILE_PORT)
-	socket, _ := net.ListenTCP("tcp", tcpAddr)
-	readConn, _ := socket.AcceptTCP()
-	defer socket.Close()
-
-	buffer := make([]byte, 4)
-	readConn.Read(buffer)
-	if string(buffer) == "fail" {
-		log.Infof("The file %s was not found in the system!", fileName)
-		return
-	}
-	
-	filePath := PARENT_DIR + "/" + args[1]
-	writeFile(filePath, readConn)
+		
+	return &response
 }
 
 func ClientPut(args []string) {
-	hostname, _ := os.Hostname()
 	fileName := args[1]
-	initRequest("put", fileName)
-	
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", hostname+":"+CLIENT_PORT)
-	socket, _ := net.ListenTCP("tcp", tcpAddr)
-	readConn, _ := socket.AcceptTCP()
-	defer socket.Close()
+	response := initClientRequest("ClientRequest.Put", fileName)
 
-	buffer := make([]byte, 1024)
-	readlen, _ := readconn.read(buffer)
+	filePath := CLIENT_FOLDER_NAME + request.FileName
+	fileContents, _ := ioutil.ReadFile(filePath)
 
-	var putnodes []string
-	json.unmarshal(buffer[:readlen], &putnodes)
-
-	log.Infof("Nodes that the client is writing to %s", putNodes)	
-	localFilePath := PARENT_DIR + "/" + args[0]
-	file, err := os.Open(localFilePath)
-	if err != nil {
-		log.Infof("Unable to open local file: %s", err)
-		return
+	request := &server.FileTransferRequest{
+		FileName: fileName,
+		FileGroup: nil,
+		Data: fileContents
 	}
-	
-	for i := 0; i < len(putNodes); i++ {
-		socket := establishTCP(putNodes[i], FILE_PORT)
-		jsonName, _ := json.Marshal(fileName)
-		socket.Write(jsonName)
-		
-		file.Seek(0, io.SeekStart)
-		_, err = io.Copy(socket, file)
-		log.Infof("Client wrote to node %s", putNodes[i])
+
+	for i = 0; i < len(response.HostList); i++ {
+		makeFileTransferRequest(response.HostList[i], "FileTransfer.SendFile", &request)
+	}
+}
+
+func ClientGet(args []string) {
+	fileName := args[0]
+	response := initClientRequest("ClientRequest.Get", fileName)
+
+	if !response.Success {
+		log.Infof("File %s not found in the sdfs!", fileName)
+	}
+
+	requestServer := response.HostList[rand.Intn(len(response.HostList))]
+	request := &server.FileTransferRequest{
+		FileName: fileName,
+		FileGroup: nil,
+		Data: nil,
+	}
+	response = makeFileTransferRequest(requestServer, "FileTransfer.GetFile", &request)
+
+	filePath := CLIENT_FOLDER_NAME + args[1]
+	err := ioutil.WriteFile(filePath, response, 0666)
+	if err != nil {
+		log.Fatalf("Unable to write bytes from get!", err)
 	}
 }
 
 func ClientDel(args []string) {
 	fileName := args[0]
-	initRequest("delete", fileName)
+	response := initClientRequest("ClientRequest.Delete", fileName)
 
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", hostname+":"+CLIENT_PORT)
-	socket, _ := net.ListenTCP("tcp", tcpAddr)
-	readConn, _ := socket.AcceptTCP()
-	defer socket.Close()
-
-	buffer := make([]byte, 4)
-	readConn.Read(buffer)
-	if string(buffer) == "fail" {
-		log.Infof("The file %s was not found in the system!", fileName)
-		return
+	if response.Success {
+		log.Infof("File %s deleted from the sdfs!", fileName)
+	} else {
+		log.Infof("File %s not found in the sdfs!", fileName)
 	}
-
-	log.Infof("%d was deleted from the system!", fileName)
 }
 
 func ClientLs(args []string) {
 	fileName := args[0]
-	initRequest("ls", fileName)
+	response := initClientRequest("ClientRequest.List", fileName)
 
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", hostname+":"+CLIENT_PORT)
-	socket, _ := net.ListenTCP("tcp", tcpAddr)
-	readConn, _ := socket.AcceptTCP()
-	defer socket.Close()
-
-	buffer := make([]byte, 4)
-	readConn.Read(buffer)
-	if string(buffer) == "fail" {
-		log.Infof("The file %s was not found in the system!", fileName)
-		return
+	if response.Success {
+		log.Infof("File %s is stored at:\n%s", response.HostList)
+	} else {
+		log.Infof("File %s not found in the sdfs!", fileName)
 	}
-
-	buffer = make([]byte, 1024)
-	readlen, _ := readconn.read(buffer)
-
-	var hosts []string
-	json.unmarshal(buffer[:readlen], &hosts)
-	log.Infof("Nodes that contain file %s:\n%s", fileName, hosts)
-}
-
-func writeFile(filePath string, readConn *net.TCPConn) {
-	fileDes, err := os.OpenFile(filePath, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
-	if err != nil {
-		log.Infof("Unable to create local file: %s", err)
-		return
-	}
-	io.TeeReader(fileDes, readConn)
-	fileDes.Close()
 }
