@@ -35,6 +35,8 @@ func main() {
 		case "leave":
 			log.Infof("Node %s is leaving the network!", hostname)
 			server.Membership.Data[hostname] = -1 * (time.Now().UnixNano() / int64(time.Millisecond))
+			time.Sleep(2 * time.Second)
+			os.Exit(0)
 		default:
 			log.Infof("Command \"%s\" not recognized", input)
 		}

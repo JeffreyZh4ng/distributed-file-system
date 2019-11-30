@@ -148,8 +148,7 @@ func removeExitedNodes() {
 			if hostName != rootName {
 				log.Infof("Node %s left the network!", hostName)
 			} else {
-				time.Sleep(time.Second)
-				os.Exit(0)
+				tempList = append(tempList, hostName)
 			}
 		} else if !(currTime-lastPing > NODE_FAIL_TIMEOUT) {
 			tempList = append(tempList, hostName)
