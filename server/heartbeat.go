@@ -3,7 +3,7 @@ package server
 import (
 	"encoding/json"
 	log "github.com/sirupsen/logrus"
-	"math"
+	// "math"
 	"net"
 	"os"
 	"sort"
@@ -41,6 +41,9 @@ func HeartbeatManager() {
 	for {
 		// This will block until the ticker sends a value to the chan
 		<-ticker.C
+		log.Infof("Data:\n%s", Membership.Data)
+		log.Infof("List:\n%s", Membership.List)
+
 		wg.Add(1)
 		go sendHeartbeats(&wg)
 		wg.Wait()
@@ -211,6 +214,7 @@ func processNewMembershipList(newMembership *MembershipList) {
 	for i := 0; i < len(newMembership.List); i++ {
 		nextHostname := newMembership.List[i]
 		newPingTime := newMembership.Data[nextHostname]
+		log.Infof("newping %s", newPingTime)
 
 		// If it finds a node that is not in the data map, add it to list and map
 		if pingTime, contains := Membership.Data[nextHostname]; !contains {
@@ -220,8 +224,12 @@ func processNewMembershipList(newMembership *MembershipList) {
 			Membership.List = append(Membership.List, nextHostname)
 			sort.Strings(Membership.List)
 
+		// This will only happen if the node has left the network
+		} else if newPingTime < 0 {
+			Membership.Data[nextHostname] = -1 * newMembership.Data[nextHostname]
+
 		// If the new Membership has a more recent time, update it
-		} else if pingTime < newPingTime && int64(math.Abs(float64(pingTime))) != newPingTime {
+		} else if pingTime < newPingTime {
 			Membership.Data[nextHostname] = newPingTime
 
 			// If the hostname is not in the list but it's in the data map,
@@ -235,10 +243,6 @@ func processNewMembershipList(newMembership *MembershipList) {
 				sort.Strings(Membership.List)
 				log.Infof("Recieved updated time from node %s. Adding back to list", nextHostname)
 			}
-
-		// This will only happen if the node has left the network
-		} else {
-			Membership.Data[nextHostname] = -1 * newMembership.Data[nextHostname]
 		}
 	}
 
