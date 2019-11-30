@@ -34,7 +34,7 @@ func main() {
 			log.Infof("Files stored in the server:\n%s", fileList)
 		case "leave":
 			log.Infof("Node %s is leaving the network!", hostname)
-			server.Membership.Data[hostname] = 0
+			server.Membership.Data[hostname] = -1 * server.Membership.Data[hostname]
 			time.Sleep(2 * time.Second)
 			os.Exit(0)
 		default:

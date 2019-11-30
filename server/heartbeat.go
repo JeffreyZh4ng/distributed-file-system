@@ -45,9 +45,10 @@ func HeartbeatManager() {
 		wg.Wait()
 
 		// If the current node has not left the network then update its time
-		if Membership.Data[hostname] != 0 {
+		if Membership.Data[hostname] > 0 {
 			Membership.Data[hostname] = time.Now().UnixNano() / int64(time.Millisecond)
 		}
+
 		removeExitedNodes()
 	}
 }
@@ -145,7 +146,8 @@ func removeExitedNodes() {
 			if hostName != rootName {
 				log.Infof("Node %s left the network!", hostName)
 			} else {
-				tempList = append(tempList, hostName)
+				os.Exit(0)
+				// tempList = append(tempList, hostName)
 			}
 		} else if !(currTime-lastPing > NODE_FAIL_TIMEOUT) {
 			tempList = append(tempList, hostName)
@@ -207,43 +209,44 @@ func openUDPConn() (*net.UDPConn) {
 func processNewMembershipList(newMembership *MembershipList) {
 	for i := 0; i < len(newMembership.List); i++ {
 		nextHostname := newMembership.List[i]
+		newPingTime := newMembership.Data[nextHostname]
 
 		// If it finds a node that is not in the data map, add it to list and map
 		if pingTime, contains := Membership.Data[nextHostname]; !contains {
 			log.Infof("Added %s to membership list!", nextHostname)
-			Membership.Data[nextHostname] = newMembership.Data[nextHostname]
+			Membership.Data[nextHostname] = newPingTime
 
 			Membership.List = append(Membership.List, nextHostname)
 			sort.Strings(Membership.List)
 
-			// If the time in the new list is 0, the node left the network
-		} else if newMembership.Data[nextHostname] == 0 || Membership.Data[nextHostname] == 0 {
-			Membership.Data[nextHostname] = 0
-
-			// If the new Membership has a more recent time, update it
-		} else if pingTime < newMembership.Data[nextHostname] {
-			Membership.Data[nextHostname] = newMembership.Data[nextHostname]
+		// If the new Membership has a more recent time, update it
+		} else if pingTime < newPingTime && abs(pingTime) != newPingTime {
+			Membership.Data[nextHostname] = newPingTime
 
 			// If the hostname is not in the list but it's in the data map,
 			// it was removed from the list because it faile or left, and
 			// we just recieved a new time indicating that it's rejoining.
 			currTime := time.Now().UnixNano() / int64(time.Millisecond)
 			if findHostnameIndex(nextHostname) >= len(Membership.List) &&
-				currTime-newMembership.Data[nextHostname] < NODE_FAIL_TIMEOUT {
+				currTime-newPingTime < NODE_FAIL_TIMEOUT {
 
 				Membership.List = append(Membership.List, nextHostname)
 				sort.Strings(Membership.List)
 				log.Infof("Recieved updated time from node %s. Adding back to list", nextHostname)
 			}
+
+		// This will only happen if the node has left the network
+		} else {
+			Membership.Data[nextHostname] = -1 * newMembership.Data[nextHostname]
 		}
 	}
 
 	// Update the time of the node who sent the list. Need to check if that node left
 	// Because if a node leaves it will send a few heartbeats to other nodes to
 	// Inform others that the node left the system
-	if Membership.Data[newMembership.SrcHost] != 0 {
-		Membership.Data[newMembership.SrcHost] = time.Now().UnixNano() / int64(time.Millisecond)
-	}
+	// if Membership.Data[newMembership.SrcHost] != 0 {
+	// 	Membership.Data[newMembership.SrcHost] = time.Now().UnixNano() / int64(time.Millisecond)
+	// }
 }
 
 // Search that will find the index of the hostname in the list
@@ -255,15 +258,4 @@ func findHostnameIndex(hostName string) int {
 	}
 
 	return len(Membership.List)
-}
-
-// Getter method for the Membership list
-func GetMembershipList() ([]string) {
-	return Membership.List
-}
-
-// This is called from the serverMain. Sets the time to the current node to 0
-func LeaveNetwork() {
-	hostname, _ := os.Hostname()
-	Membership.Data[hostname] = 0
 }
