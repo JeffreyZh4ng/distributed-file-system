@@ -91,7 +91,6 @@ func clientRequestListener() {
 	http.DefaultServeMux = oldMux
 
 	listener, _ := net.Listen("tcp", ":"+CLIENT_RPC_PORT)
-	defer listener.Close()
 
 	go http.Serve(listener, nil)
 }
@@ -113,7 +112,6 @@ func serverResponseListener() {
 	http.DefaultServeMux = oldMux
 
 	listener, _ := net.Listen("tcp", ":"+SERVER_RPC_PORT)
-	defer listener.Close()
 
 	go http.Serve(listener, nil)
 }
@@ -135,7 +133,6 @@ func fileTransferListener() {
 	http.DefaultServeMux = oldMux
 
 	listener, _ := net.Listen("tcp", ":"+FILE_RPC_PORT)
-	defer listener.Close()
 
 	go http.Serve(listener, nil)
 }

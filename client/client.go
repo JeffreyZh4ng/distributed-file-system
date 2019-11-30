@@ -1,14 +1,11 @@
 package client
 
 import (
-	"encoding/json"
 	log "github.com/sirupsen/logrus"
 	"cs-425-mp3/server"
-	"io"
 	"io/ioutil"
 	"math/rand"
-	"net"
-	"os"
+	"net/rpc"
 	"strconv"
 )
 
@@ -23,7 +20,7 @@ func initClientRequest(requestType string, fileName string) (*server.ClientRespo
 		}
 
 		connectName := "fa19-cs425-g84-" + numStr + ".cs.illinois.edu"
-		response := makeClientRequest(connectName, requestType, args)
+		response := makeClientRequest(connectName, requestType, fileName)
 
 		if response != nil {
 			log.Infof("Connected to server %s and recieved a response", connectName)
@@ -36,8 +33,9 @@ func initClientRequest(requestType string, fileName string) (*server.ClientRespo
 }
 
 // Function that dials a specific server
-func makeClientRequest(hostname string, requestType string, fileName []string) (*server.ClientResponseArgs) {
-	client, err := rpc.DialHTTP("tcp", hostname + ":" + SERVER_PORT_NUM)
+func makeClientRequest(hostname string, requestType string, fileName string) (*server.ClientResponseArgs) {
+	log.Infof("Making request to %s", hostname + ":" + server.CLIENT_RPC_PORT)
+	client, err := rpc.DialHTTP("tcp", hostname + ":" + server.CLIENT_RPC_PORT)
 	if err != nil {
 		return nil
 	}
@@ -54,10 +52,8 @@ func makeClientRequest(hostname string, requestType string, fileName []string) (
 }
 
 // Function that will dial a server to request or send a file
-func makeFileTransferRequest(hostname string, requestType string, request server.FileTransferRequest) 
-		(response []byte) {
-
-	client, err := rpc.DialHTTP("tcp", hostname + ":" + FILE_RPC_PORT)
+func makeFileTransferRequest(hostname string, requestType string, request *server.FileTransferRequest) ([]byte) {
+	client, err := rpc.DialHTTP("tcp", hostname + ":" + server.FILE_RPC_PORT)
 	if err != nil {
 		return nil
 	}
@@ -70,24 +66,24 @@ func makeFileTransferRequest(hostname string, requestType string, request server
 		return nil
 	}
 		
-	return &response
+	return response
 }
 
 func ClientPut(args []string) {
 	fileName := args[1]
 	response := initClientRequest("ClientRequest.Put", fileName)
 
-	filePath := CLIENT_FOLDER_NAME + request.FileName
+	filePath := CLIENT_FOLDER_NAME + args[0]
 	fileContents, _ := ioutil.ReadFile(filePath)
 
 	request := &server.FileTransferRequest{
 		FileName: fileName,
 		FileGroup: nil,
-		Data: fileContents
+		Data: fileContents,
 	}
 
-	for i = 0; i < len(response.HostList); i++ {
-		makeFileTransferRequest(response.HostList[i], "FileTransfer.SendFile", &request)
+	for i := 0; i < len(response.HostList); i++ {
+		makeFileTransferRequest(response.HostList[i], "FileTransfer.SendFile", request)
 	}
 }
 
@@ -105,10 +101,10 @@ func ClientGet(args []string) {
 		FileGroup: nil,
 		Data: nil,
 	}
-	response = makeFileTransferRequest(requestServer, "FileTransfer.GetFile", &request)
+	transferResponse := makeFileTransferRequest(requestServer, "FileTransfer.GetFile", request)
 
 	filePath := CLIENT_FOLDER_NAME + args[1]
-	err := ioutil.WriteFile(filePath, response, 0666)
+	err := ioutil.WriteFile(filePath, transferResponse, 0666)
 	if err != nil {
 		log.Fatalf("Unable to write bytes from get!", err)
 	}
