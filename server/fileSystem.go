@@ -92,7 +92,7 @@ func clientRequestListener() {
 
 	listener, _ := net.Listen("tcp", ":"+CLIENT_RPC_PORT)
 
-	go http.Serve(listener, nil)
+	go http.Serve(listener, mux)
 }
 
 // Goroutine that will listen for incoming RPC calls from other servers
@@ -113,7 +113,7 @@ func serverResponseListener() {
 
 	listener, _ := net.Listen("tcp", ":"+SERVER_RPC_PORT)
 
-	go http.Serve(listener, nil)
+	go http.Serve(listener, mux)
 }
 
 // Goroutine that will listen for incoming RPC connection to transfer a file
@@ -134,7 +134,7 @@ func fileTransferListener() {
 
 	listener, _ := net.Listen("tcp", ":"+FILE_RPC_PORT)
 
-	go http.Serve(listener, nil)
+	go http.Serve(listener, mux)
 }
 
 // Function that deletes data for a file from the server and the localFiles struct
