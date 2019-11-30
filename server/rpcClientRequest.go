@@ -47,14 +47,20 @@ func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) er
 			nodeName := Membership.List[randIndex]
 
 			// If the current random pick matches one that was already picked, continue
+			duplicate := false
 			for i := 0; i < len(randomHostList); i++ {
 				if randomHostList[i] == nodeName {
-					continue
+					duplicate = true
+					break
 				}
 			}
 			
+			if duplicate {
+				continue
+			}
+
 			randomHostList = append(randomHostList, nodeName)
-			if len(randomHostList) == 4 {
+			if len(randomHostList) == 4 || len(randomHostList) == len(Membership.List) {
 				response.HostList = randomHostList
 				return nil
 			}

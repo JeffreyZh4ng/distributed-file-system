@@ -34,7 +34,7 @@ func initClientRequest(requestType string, fileName string) (*server.ClientRespo
 
 // Function that dials a specific server
 func makeClientRequest(hostname string, requestType string, fileName string) (*server.ClientResponseArgs) {
-	log.Infof("Making request to %s", hostname + ":" + server.CLIENT_RPC_PORT)
+	log.Infof("Making client request to %s", hostname + ":" + server.CLIENT_RPC_PORT)
 	client, err := rpc.DialHTTP("tcp", hostname + ":" + server.CLIENT_RPC_PORT)
 	if err != nil {
 		return nil
@@ -53,6 +53,7 @@ func makeClientRequest(hostname string, requestType string, fileName string) (*s
 
 // Function that will dial a server to request or send a file
 func makeFileTransferRequest(hostname string, requestType string, request *server.FileTransferRequest) ([]byte) {
+	log.Infof("Making transfer request to %s", hostname + ":" + server.CLIENT_RPC_PORT)
 	client, err := rpc.DialHTTP("tcp", hostname + ":" + server.FILE_RPC_PORT)
 	if err != nil {
 		return nil
@@ -72,13 +73,14 @@ func makeFileTransferRequest(hostname string, requestType string, request *serve
 func ClientPut(args []string) {
 	fileName := args[1]
 	response := initClientRequest("ClientRequest.Put", fileName)
+	log.Infof("Putting file to %s", response.HostList)
 
 	filePath := CLIENT_FOLDER_NAME + args[0]
 	fileContents, _ := ioutil.ReadFile(filePath)
 
 	request := &server.FileTransferRequest{
 		FileName: fileName,
-		FileGroup: nil,
+		FileGroup: response.HostList,
 		Data: fileContents,
 	}
 

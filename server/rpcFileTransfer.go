@@ -30,7 +30,7 @@ type TransferResult []byte
 
 func (t *FileTransfer) SendFile(request FileTransferRequest, _ *TransferResult) error {
 	filePath := SERVER_FOLDER_NAME + request.FileName
-	fileDes, _ := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
+	fileDes, _ := os.OpenFile(filePath, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
 	fileDes.Write(request.Data)
 
 	LocalFiles.Files[request.FileName] = request.FileGroup
