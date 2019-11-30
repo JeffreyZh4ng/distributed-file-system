@@ -208,8 +208,6 @@ func openUDPConn() (*net.UDPConn) {
 
 // Loop through the new Membership and update the timestamps in the current node.
 func processNewMembershipList(newMembership *MembershipList) {
-	log.Infof("New Mem %s", newMembership.Data)
-
 	for i := 0; i < len(newMembership.List); i++ {
 		nextHostname := newMembership.List[i]
 		newPingTime := newMembership.Data[nextHostname]
