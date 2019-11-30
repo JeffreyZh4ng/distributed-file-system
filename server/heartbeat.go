@@ -41,8 +41,6 @@ func HeartbeatManager() {
 	for {
 		// This will block until the ticker sends a value to the chan
 		<-ticker.C
-		log.Infof("Data:\n%s", Membership.Data)
-		log.Infof("List:\n%s", Membership.List)
 
 		wg.Add(1)
 		go sendHeartbeats(&wg)
@@ -146,7 +144,7 @@ func removeExitedNodes() {
 
 	for _, hostName := range Membership.List {
 		lastPing := Membership.Data[hostName]
-		if lastPing == 0 {
+		if lastPing < 0 {
 			if hostName != rootName {
 				log.Infof("Node %s left the network!", hostName)
 			} else {
