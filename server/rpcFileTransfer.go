@@ -28,7 +28,7 @@ type FileTransfer int
 
 type TransferResult []byte
 
-func (t *FileTransfer) SendFile(request FileTransferRequest, _ *Result) error {
+func (t *FileTransfer) SendFile(request FileTransferRequest, _ *TransferResult) error {
 	filePath := SERVER_FOLDER_NAME + request.FileName
 	fileDes, _ := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
 	fileDes.Write(request.Data)
@@ -39,7 +39,7 @@ func (t *FileTransfer) SendFile(request FileTransferRequest, _ *Result) error {
 	return nil
 }
 
-func (t *FileTransfer) GetFile(request FileTransferRequest, data *Result) error {
+func (t *FileTransfer) GetFile(request FileTransferRequest, data *TransferResult) error {
 	filePath := SERVER_FOLDER_NAME + request.FileName
 	fileContents, _ := ioutil.ReadFile(filePath)
 	*data = fileContents
@@ -47,7 +47,7 @@ func (t *FileTransfer) GetFile(request FileTransferRequest, data *Result) error 
 	return nil
 }
 
-func (t *FileTransfer) UpdateFileGroup(request UpdateFileGroupRequest, _ *Result) error {
+func (t *FileTransfer) UpdateFileGroup(request UpdateFileGroupRequest, _ *TransferResult) error {
 	LocalFiles.Files[request.FileName] = request.FileGroup
 	LocalFiles.UpdateTimes[request.FileName] = time.Now().UnixNano() / int64(time.Millisecond)
 
