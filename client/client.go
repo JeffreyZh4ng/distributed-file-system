@@ -35,7 +35,7 @@ func initClientRequest(requestType string, fileName string) (*server.ClientRespo
 // Function that dials a specific server
 func makeClientRequest(hostname string, requestType string, fileName string) (*server.ClientResponseArgs) {
 	log.Infof("Making request to %s", hostname + ":" + server.CLIENT_RPC_PORT)
-	client, err := rpc.DialHTTP("tcp", hostname + ":" + server.CLIENT_RPC_PORT)
+	client, err := server.ClientRPCServer.DialHTTP("tcp", hostname + ":" + server.CLIENT_RPC_PORT)
 	if err != nil {
 		return nil
 	}
@@ -53,7 +53,7 @@ func makeClientRequest(hostname string, requestType string, fileName string) (*s
 
 // Function that will dial a server to request or send a file
 func makeFileTransferRequest(hostname string, requestType string, request *server.FileTransferRequest) ([]byte) {
-	client, err := rpc.DialHTTP("tcp", hostname + ":" + server.FILE_RPC_PORT)
+	client, err := server.FileRPCServer.DialHTTP("tcp", hostname + ":" + server.FILE_RPC_PORT)
 	if err != nil {
 		return nil
 	}

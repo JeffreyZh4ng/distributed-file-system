@@ -24,6 +24,9 @@ type LocalFileSystem struct {
 // Need to keep a global file list and server response map
 var ServerResponses map[string][]string
 var LocalFiles *LocalFileSystem
+var ClientRPCServer *rpc.Server
+var ServerRPCServer *rpc.Server
+var FileRPCServer *rpc.Server
 
 // go routine that will handle requests and resharding of files from failed nodes
 func FileSystemManager() {
@@ -76,9 +79,9 @@ func FileSystemManager() {
 
 // Goroutine that will listen for incoming RPC requests made from any client
 func clientRequestListener() {
-	server := rpc.NewServer()
+	ClientRPCServer = rpc.NewServer()
 	clientRequestRPC := new(ClientRequest)
-	err := server.Register(clientRequestRPC)
+	err := ClientRPCServer.Register(clientRequestRPC)
 	if err != nil {
 		log.Fatalf("Format of service ClientRequest isn't correct. %s", err)
 	}
@@ -87,7 +90,7 @@ func clientRequestListener() {
 	oldMux := http.DefaultServeMux
     mux := http.NewServeMux()
     http.DefaultServeMux = mux
-	server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
+	ClientRPCServer.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 	http.DefaultServeMux = oldMux
 
 	listener, _ := net.Listen("tcp", ":"+CLIENT_RPC_PORT)
@@ -97,9 +100,9 @@ func clientRequestListener() {
 
 // Goroutine that will listen for incoming RPC calls from other servers
 func serverResponseListener() {
-	server := rpc.NewServer()
+	ServerRPCServer = rpc.NewServer()
 	serverResponseRPC := new(ServerCommunication)
-	err := server.Register(serverResponseRPC)
+	err := ServerRPCServer.Register(serverResponseRPC)
 	if err != nil {
 		log.Fatalf("Format of service ServerCommunication isn't correct. %s", err)
 	}
@@ -107,8 +110,8 @@ func serverResponseListener() {
 	// Weird thing we have to do to allow more than one RPC server running
 	oldMux := http.DefaultServeMux
     mux := http.NewServeMux()
-    http.DefaultServeMux = mux
-	server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
+    ServerRPCServer.DefaultServeMux = mux
+	serverRPCServer.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 	http.DefaultServeMux = oldMux
 
 	listener, _ := net.Listen("tcp", ":"+SERVER_RPC_PORT)
@@ -118,9 +121,9 @@ func serverResponseListener() {
 
 // Goroutine that will listen for incoming RPC connection to transfer a file
 func fileTransferListener() {
-	server := rpc.NewServer()
+	FileRPCServer = rpc.NewServer()
 	fileTransferRPC := new(FileTransfer)
-	err := server.Register(fileTransferRPC)
+	err := FileRPCServer.Register(fileTransferRPC)
 	if err != nil {
 		log.Fatalf("Format of service ServerCommunication isn't correct. %s", err)
 	}
@@ -129,7 +132,7 @@ func fileTransferListener() {
 	oldMux := http.DefaultServeMux
     mux := http.NewServeMux()
     http.DefaultServeMux = mux
-	server.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
+	FileRPCServer.HandleHTTP(rpc.DefaultRPCPath, rpc.DefaultDebugPath)
 	http.DefaultServeMux = oldMux
 
 	listener, _ := net.Listen("tcp", ":"+FILE_RPC_PORT)
