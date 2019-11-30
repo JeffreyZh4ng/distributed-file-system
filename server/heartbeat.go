@@ -220,7 +220,7 @@ func processNewMembershipList(newMembership *MembershipList) {
 			sort.Strings(Membership.List)
 
 		// If the new Membership has a more recent time, update it
-		} else if pingTime < newPingTime && abs(pingTime) != newPingTime {
+		} else if pingTime < newPingTime && Abs(pingTime) != newPingTime {
 			Membership.Data[nextHostname] = newPingTime
 
 			// If the hostname is not in the list but it's in the data map,
