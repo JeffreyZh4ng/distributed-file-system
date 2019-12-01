@@ -26,7 +26,7 @@ type Request struct {
 }
 
 var CLIENT_RPC_PORT string = "5000"
-var REQUEST_TIMEOUT int64 = 5000
+var REQUEST_TIMEOUT int64 = 3000
 
 // Global that keeps track of how many requests have been created by this node
 var requestCount int = 1000
@@ -126,17 +126,30 @@ func handleClientRequest(requestType string, requestFile string) (success bool, 
 		// If the leader recieved a response from a server that the file was found
 		if hostList, contains := ServerResponses[requestId]; contains {
 			delete(ServerResponses, requestId)
-			log.Infof("Found file %s at server %s", requestFile, hostList)
+			removeRequest(requestId)
+			log.Infof("Found file %s", requestFile)
 			return true, hostList
 		}
 
 		currTime := time.Now().UnixNano() / int64(time.Millisecond)
 		if currTime-startTime > REQUEST_TIMEOUT {
 			delete(ServerResponses, requestId)
+			removeRequest(requestId)
 			log.Infof("Could not find file %s in the sdfs!", requestFile)
 			break
 		}
 	}
 
 	return false, []string{}
+}
+
+// Helper that will remove a pending request and update the RequestUTime
+func removeRequest(requestId string) {
+	for idx, request := range Membership.Pending {
+		if request.ID == requestId {
+			Membership.Pending = append(Membership.Pending[:idx], Membership.Pending[idx+1:]...)
+			Membership.RequestUTime = time.Now().UnixNano() / int64(time.Millisecond)
+			return
+		}
+	}
 }
