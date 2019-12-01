@@ -139,6 +139,7 @@ func fileTransferListener() {
 func deleteLocalFile(fileName string) {
 	delete(LocalFiles.Files, fileName)
 	delete(LocalFiles.UpdateTimes, fileName)
+	log.Infof("File %s deleted from the server!", fileName)
 
 	err := os.Remove(SERVER_FOLDER_NAME + fileName)
 	if err != nil {
@@ -211,6 +212,7 @@ func reshardFiles(fileName string, fileGroupAliveNodes []string) {
 		randIndex := 0
 
 		for {
+			rand.Seed(time.Now().UnixNano())
 			randIndex = rand.Intn(len(Membership.List))
 			nodeName := Membership.List[randIndex]
 			for i := 0; i < len(fileGroupAliveNodes); i++ {

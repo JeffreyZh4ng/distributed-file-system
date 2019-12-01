@@ -48,6 +48,7 @@ func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) er
 		randomHostList := []string{}
 
 		for {
+			rand.Seed(time.Now().UnixNano())
 			randIndex := rand.Intn(len(Membership.List))
 			nodeName := Membership.List[randIndex]
 

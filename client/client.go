@@ -97,6 +97,7 @@ func ClientGet(args []string) {
 		log.Infof("File %s not found in the sdfs!", fileName)
 	}
 
+	rand.Seed(time.Now().UnixNano())
 	requestServer := response.HostList[rand.Intn(len(response.HostList))]
 	request := &server.FileTransferRequest{
 		FileName: fileName,
