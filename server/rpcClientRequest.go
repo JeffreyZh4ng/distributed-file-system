@@ -1,6 +1,7 @@
 package server
 
 import (
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"os"
 	"strconv"
@@ -110,7 +111,9 @@ func handleClientRequest(requestType string, requestFile string) (success bool, 
 		SrcHost:  hostname,
 		FileName: requestFile,
 	}
+	log.Infof("Adding %s request, ID: %s to pending bus", requestType, requestId)
 	Membership.Pending = append(Membership.Pending, request)
+	Membership.RequestUTime = time.Now().UnixNano() / int64(time.Millisecond)
 
 	// Will check if the node has recieved a response from another server 
 	// Indicating that that node has the file
@@ -123,11 +126,14 @@ func handleClientRequest(requestType string, requestFile string) (success bool, 
 		// If the leader recieved a response from a server that the file was found
 		if hostList, contains := ServerResponses[requestId]; contains {
 			delete(ServerResponses, requestId)
+			log.Infof("Found file %s at server %s", requestFile, hostList)
 			return true, hostList
 		}
 
 		currTime := time.Now().UnixNano() / int64(time.Millisecond)
 		if currTime-startTime > REQUEST_TIMEOUT {
+			delete(ServerResponses, requestId)
+			log.Infof("Could not find file %s in the sdfs!", requestFile)
 			break
 		}
 	}

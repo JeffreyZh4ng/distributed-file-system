@@ -44,6 +44,7 @@ func FileSystemManager() {
 
 		// Check if there are any requests in the membership list
 		for _, request := range Membership.Pending {
+			log.Infof("Processing request %s", request.ID)
 
 			// If the request is in the complete list or the node doesnt have the file, continue
 			_, isRequestFinished := completedRequests[request.ID]
@@ -57,7 +58,7 @@ func FileSystemManager() {
 			case "Delete":
 				deleteLocalFile(request.FileName)
 			default:
-				fileFoundRCP(request)
+				fileFoundRPC(request)
 				break
 			}
 
@@ -151,7 +152,7 @@ func deleteLocalFile(fileName string) {
 
 // Function that will send an RPC call to the leader indicating that the request has been fulfilled
 // This RPC will only be sent out if the current node is the leader of the FileGroup (Lowest ID)
-func fileFoundRCP(request *Request) {
+func fileFoundRPC(request *Request) {
 	hostname, _ := os.Hostname()
 	fileGroup, _ := LocalFiles.Files[request.FileName]
 	if fileGroup[0] != hostname {
