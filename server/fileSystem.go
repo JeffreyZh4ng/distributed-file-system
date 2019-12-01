@@ -45,7 +45,6 @@ func FileSystemManager() {
 
 		// Check if there are any requests in the membership list
 		for _, request := range Membership.Pending {
-			log.Infof("Processing request %s", request.ID)
 
 			// If the request is in the complete list or the node doesnt have the file, continue
 			_, isRequestFinished := completedRequests[request.ID]

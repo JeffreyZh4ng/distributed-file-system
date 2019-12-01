@@ -36,7 +36,10 @@ func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) er
 	// The leader will return the nodes to write to and if the user need confirmation
 	// The client will then RPC connect to the nodes and write the file the client
 	// Will handle the confirmation
+	log.Infof("Server recieved Put for file %s", requestFile)
 	success, hostList := handleClientRequest("Put", requestFile)
+
+	// We can change this to indicate if it was within the grace period
 	response.Success = success
 
 	// If the file was not found, pick four random nodes to shard the file to
@@ -73,8 +76,7 @@ func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) er
 }
 
 func (t *ClientRequest) Get(requestFile string, response *ClientResponseArgs) error {
-	// This function will return a response of which node has the specified file
-	// The client will then connect to that server with RPC to retrieve the file
+	log.Infof("Server recieved Get for file %s", requestFile)
 	success, hostList := handleClientRequest("Get", requestFile)
 	response.Success = success
 	response.HostList = hostList
@@ -83,6 +85,7 @@ func (t *ClientRequest) Get(requestFile string, response *ClientResponseArgs) er
 }
 
 func (t *ClientRequest) Delete(requestFile string, response *ClientResponseArgs) error {
+	log.Infof("Server recieved Delete for file %s", requestFile)
 	success, _ := handleClientRequest("Delete", requestFile)
 	response.Success = success
 	response.HostList = []string{}
@@ -91,6 +94,7 @@ func (t *ClientRequest) Delete(requestFile string, response *ClientResponseArgs)
 }
 
 func (t *ClientRequest) List(requestFile string, response *ClientResponseArgs) error {
+	log.Infof("Server recieved Ls for file %s", requestFile)
 	success, hostList := handleClientRequest("List", requestFile)
 	response.Success = success
 	response.HostList = hostList
@@ -127,7 +131,7 @@ func handleClientRequest(requestType string, requestFile string) (success bool, 
 		if hostList, contains := ServerResponses[requestId]; contains {
 			delete(ServerResponses, requestId)
 			removeRequest(requestId)
-			log.Infof("Found file %s", requestFile)
+			log.Infof("Found file %s in the sdfs", requestFile)
 			return true, hostList
 		}
 

@@ -1,6 +1,7 @@
 package server
 
 import (
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"time"
@@ -32,6 +33,7 @@ func (t *FileTransfer) SendFile(request FileTransferRequest, _ *TransferResult) 
 	filePath := SERVER_FOLDER_NAME + request.FileName
 	fileDes, _ := os.OpenFile(filePath, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
 	fileDes.Write(request.Data)
+	log.Infof("Wrote file %s to server!", request.FileName)
 
 	LocalFiles.Files[request.FileName] = request.FileGroup
 	LocalFiles.UpdateTimes[request.FileName] = time.Now().UnixNano() / int64(time.Millisecond)
@@ -43,6 +45,7 @@ func (t *FileTransfer) GetFile(request FileTransferRequest, data *TransferResult
 	filePath := SERVER_FOLDER_NAME + request.FileName
 	fileContents, _ := ioutil.ReadFile(filePath)
 	*data = fileContents
+	log.Infof("Sending file %s to client!", request.FileName)
  
 	return nil
 }
