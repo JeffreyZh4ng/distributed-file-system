@@ -54,12 +54,9 @@ func FileSystemManager() {
 			}
 
 			// We let the delete fall through to the default case
-			switch request.Type {
-			case "Delete":
+			fileFoundRPC(request)
+			if request.Type == "Delete" {
 				deleteLocalFile(request.FileName)
-			default:
-				fileFoundRPC(request)
-				break
 			}
 
 			completedRequests[request.ID] = time.Now().UnixNano() / int64(time.Millisecond)
