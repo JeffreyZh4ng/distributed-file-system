@@ -128,7 +128,7 @@ func ClientLs(args []string) {
 	response := initClientRequest("ClientRequest.List", fileName)
 
 	if response.Success {
-		log.Infof("File %s is stored at:\n%s", response.HostList)
+		log.Infof("File %s is stored at:\n%s", fileName, response.HostList)
 	} else {
 		log.Infof("File %s not found in the sdfs!", fileName)
 	}

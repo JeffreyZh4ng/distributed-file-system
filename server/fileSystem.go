@@ -169,6 +169,7 @@ func fileFoundRPC(request *Request) {
 		HostList: fileGroup,
 	}
 
+	log.Infof("File %s for ID: %s found on this server!", request.FileName, request.ID)
 	err = client.Call("ServerCommunication.FileFound", args, nil)
 	if err != nil {
 		log.Fatalf("error in ServerCommunication", err)

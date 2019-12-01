@@ -4,6 +4,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -65,6 +66,7 @@ func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) er
 
 			randomHostList = append(randomHostList, nodeName)
 			if len(randomHostList) == 4 || len(randomHostList) == len(Membership.List) {
+				sort.Strings(randomHostList)
 				response.HostList = randomHostList
 				return nil
 			}
