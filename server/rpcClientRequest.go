@@ -29,7 +29,7 @@ var CLIENT_RPC_PORT string = "5000"
 var REQUEST_TIMEOUT int64 = 5000
 
 // Global that keeps track of how many requests have been created by this node
-var requestCount int = 0
+var requestCount int = 1000
 
 func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) error {
 	// This function will look for the file in the system. If it doesnt exist,
@@ -102,7 +102,7 @@ func handleClientRequest(requestType string, requestFile string) (success bool, 
 	// Will create a unique ID name with the curent VM name and a counter for how many client
 	// Requests have been created from this node
 	hostname, _ := os.Hostname()
-	requestId := hostname + strconv.Itoa(requestCount)
+	requestId := hostname+"["+strconv.Itoa(requestCount)+"]"
 	requestCount++
 
 	request := &Request{

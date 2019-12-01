@@ -31,6 +31,7 @@ func FileSystemManager() {
 		Files: map[string][]string{},
 		UpdateTimes: map[string]int64{},
 	}
+	ServerResponses = map[string][]string{}
 
 	go clientRequestListener()
 	go serverResponseListener()
