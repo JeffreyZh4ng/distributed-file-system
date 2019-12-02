@@ -198,7 +198,7 @@ func findFailedNodes() {
 
 // This will randomly pick nodes that doesnt have the file to reshard the file to them
 func reshardFiles(fileName string, fileGroupAliveNodes []string) {
-	var newFileGroup []string
+	newFileGroup := make([]string, len(fileGroupAliveNodes))
 	copy(newFileGroup, fileGroupAliveNodes)
 	rand.Seed(time.Now().UnixNano())
 
@@ -235,7 +235,7 @@ func reshardFiles(fileName string, fileGroupAliveNodes []string) {
 		HostList: newFileGroup,
 	}
 	for _, node := range fileGroupAliveNodes {
-		log.Infof("Updating server %s file group to %s for file %s", node, newFileGroup, fileName)
+		log.Infof("Updating server %s file group for file %s", node, fileName)
 		updateFileGroupRPC(node, updateFileGroupArgs)
 	}
 
