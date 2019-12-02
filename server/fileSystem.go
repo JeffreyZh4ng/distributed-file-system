@@ -191,7 +191,7 @@ func findFailedNodes() {
 
 		// If there are less than NUM_REPLICAS of a file, and the current node is the fileMaster, reshard
 		if len(fileGroupAliveNodes) < NUM_REPLICAS && fileGroupAliveNodes[0] == hostname {
-			reshardFiles(fileName, fileGroupAliveNodes)
+			go reshardFiles(fileName, fileGroupAliveNodes)
 		}
 	}
 }
@@ -235,6 +235,7 @@ func reshardFiles(fileName string, fileGroupAliveNodes []string) {
 		HostList: newFileGroup,
 	}
 	for _, node := range fileGroupAliveNodes {
+		log.Infof("Updating server %s file group to %s for file %s", node, newFileGroup, fileName)
 		updateFileGroupRPC(node, updateFileGroupArgs)
 	}
 
@@ -246,6 +247,7 @@ func reshardFiles(fileName string, fileGroupAliveNodes []string) {
 		Data: loadedFile,
 	}
 	for _, node := range newGroupMembers {
+		log.Infof("Sending file %s to server %s", fileName, node)
 		fileTransferRPC(node, fileTransferArgs)
 	}
 }
@@ -265,7 +267,7 @@ func fileTransferRPC(transferHost string, fileTransferArgs *FileTransferRequest)
 
 // Helper that will call the UpdateFileGroup RPC and will update the FileGroup of a file at a node
 func updateFileGroupRPC(updateHost string, updateFileGroupArgs *ServerRequestArgs) {
-	client, err := rpc.DialHTTP("tcp", updateHost+":"+FILE_RPC_PORT)
+	client, err := rpc.DialHTTP("tcp", updateHost+":"+SERVER_RPC_PORT)
 	if err != nil {
 		log.Fatalf("Error in dialing. %s", err)
 	}
