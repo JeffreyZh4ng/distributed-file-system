@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-var FINISHED_REQUEST_TTL int64 = 5000
 var NUM_REPLICAS int = 4
 
 // Local datastore that keeps track of the other nodes that have the same files
@@ -27,11 +26,11 @@ var LocalFiles *LocalFileSystem
 
 // go routine that will handle requests and resharding of files from failed nodes
 func FileSystemManager() {
+	ServerResponses = map[string][]string{}
 	LocalFiles = &LocalFileSystem{
 		Files: map[string][]string{},
 		UpdateTimes: map[string]int64{},
 	}
-	ServerResponses = map[string][]string{}
 
 	go clientRequestListener()
 	go serverResponseListener()
@@ -63,12 +62,6 @@ func FileSystemManager() {
 		}
 
 		findFailedNodes()
-		for requestID, finishTime := range completedRequests {
-			currTime := time.Now().UnixNano() / int64(time.Millisecond)
-			if currTime-finishTime > FINISHED_REQUEST_TTL {
-				delete(completedRequests, requestID)
-			}
-		}
 	}
 }
 
@@ -120,7 +113,7 @@ func fileTransferListener() {
 	fileTransferRPC := new(FileTransfer)
 	err := server.Register(fileTransferRPC)
 	if err != nil {
-		log.Fatalf("Format of service ServerCommunication isn't correct. %s", err)
+		log.Fatalf("Format of service fileTransfer isn't correct. %s", err)
 	}
 
 	// Weird thing we have to do to allow more than one RPC server running
@@ -164,6 +157,7 @@ func fileFoundRPC(request *Request) {
 
 	args := &ServerRequestArgs{
 		ID: request.ID,
+		FileName: request.FileName,
 		HostList: fileGroup,
 	}
 
@@ -176,13 +170,15 @@ func fileFoundRPC(request *Request) {
 
 // This will find all the files that need to be resharded to another node
 func findFailedNodes() {
-	hostname, _ := os.Hostname()
+
+	// Populate a map to make alive node lookup easier
 	aliveNodes := map[string]int{}
 	for _, host := range Membership.List {
 		aliveNodes[host] = 0
 	}
 
 	// Loop through every node in every file stored in the local system
+	hostname, _ := os.Hostname()
 	for fileName, fileGroup := range LocalFiles.Files {
 
 		fileGroupAliveNodes := []string{}
@@ -193,59 +189,64 @@ func findFailedNodes() {
 			}
 		}
 
-		// If there are less than NUM_REPLICAS of a file, and the current node is the groupMaster, reshard
+		// If there are less than NUM_REPLICAS of a file, and the current node is the fileMaster, reshard
 		if len(fileGroupAliveNodes) < NUM_REPLICAS && fileGroupAliveNodes[0] == hostname {
 			reshardFiles(fileName, fileGroupAliveNodes)
 		}
 	}
 }
 
-// This will randomly pick another node that doesnt have the file to reshard the file to
+// This will randomly pick nodes that doesnt have the file to reshard the file to them
 func reshardFiles(fileName string, fileGroupAliveNodes []string) {
 	var newFileGroup []string
 	copy(newFileGroup, fileGroupAliveNodes)
-	reshardTargetNodes := []string{}
+	rand.Seed(time.Now().UnixNano())
 
-	for i := 0; i < NUM_REPLICAS-len(fileGroupAliveNodes); i++ {
+	// Disgusting random function that will loop until it finds a node not in the runningNodes list
+	newGroupMembers := []string{}
+	for {
+		randIndex := rand.Intn(len(Membership.List))
+		nodeName := Membership.List[randIndex]
 
-		// Disgusting random function that will loop until it finds a node not in the runningNodes list
-		randIndex := 0
-
-		for {
-			rand.Seed(time.Now().UnixNano())
-			randIndex = rand.Intn(len(Membership.List))
-			nodeName := Membership.List[randIndex]
-			for i := 0; i < len(fileGroupAliveNodes); i++ {
-				if fileGroupAliveNodes[i] == nodeName {
-					continue
-				}
+		duplicate := false
+		for i := 0; i < len(newFileGroup); i++ {
+			if newFileGroup[i] == nodeName {
+				duplicate = true
+				break
 			}
-
-			break
 		}
 
-		randomNode := Membership.List[randIndex]
-		reshardTargetNodes = append(reshardTargetNodes, randomNode)
-		newFileGroup = append(newFileGroup, randomNode)
-		sort.Strings(newFileGroup)
+		if duplicate {
+			continue
+		}
+
+		newFileGroup = append(newFileGroup, nodeName)
+		newGroupMembers = append(newGroupMembers, nodeName)
+		if len(newFileGroup) == NUM_REPLICAS {
+			sort.Strings(newFileGroup)
+			break
+		}
 	}
 
+	// Update the fileGroup for the original owners of the file
+	updateFileGroupArgs := &ServerRequestArgs{
+		ID: "",
+		FileName: fileName,
+		HostList: newFileGroup,
+	}
+	for _, node := range fileGroupAliveNodes {
+		updateFileGroupRPC(node, updateFileGroupArgs)
+	}
+
+	// Send the file and the new group over to the new members of the fileGroup
 	loadedFile, _ := ioutil.ReadFile(SERVER_FOLDER_NAME + fileName)
 	fileTransferArgs := &FileTransferRequest{
 		FileName: fileName,
 		FileGroup: newFileGroup,
 		Data: loadedFile,
 	}
-	for _, node := range reshardTargetNodes {
+	for _, node := range newGroupMembers {
 		fileTransferRPC(node, fileTransferArgs)
-	}
-
-	updateFileGroupArgs := &UpdateFileGroupRequest{
-		FileName: fileName,
-		FileGroup: newFileGroup,
-	}
-	for _, node := range fileGroupAliveNodes {
-		updateFileGroupRPC(node, updateFileGroupArgs)
 	}
 }
 
@@ -258,18 +259,18 @@ func fileTransferRPC(transferHost string, fileTransferArgs *FileTransferRequest)
 
 	err = client.Call("FileTransfer.SendFile", fileTransferArgs, nil)
 	if err != nil {
-		log.Fatalf("error in ServerCommunication", err)
+		log.Fatalf("error in fileTransfer", err)
 	}
 }
 
 // Helper that will call the UpdateFileGroup RPC and will update the FileGroup of a file at a node
-func updateFileGroupRPC(updateHost string, updateFileGroupArgs *UpdateFileGroupRequest) {
+func updateFileGroupRPC(updateHost string, updateFileGroupArgs *ServerRequestArgs) {
 	client, err := rpc.DialHTTP("tcp", updateHost+":"+FILE_RPC_PORT)
 	if err != nil {
 		log.Fatalf("Error in dialing. %s", err)
 	}
 
-	err = client.Call("FileTransfer.UpdateFileGroup", updateFileGroupArgs, nil)
+	err = client.Call("ServerCommunication.UpdateFileGroup", updateFileGroupArgs, nil)
 	if err != nil {
 		log.Fatalf("error in ServerCommunication", err)
 	}

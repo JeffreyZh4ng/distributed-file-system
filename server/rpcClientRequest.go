@@ -9,16 +9,16 @@ import (
 	"time"
 )
 
-// Hold arguments to be returned to the client
 type ClientResponseArgs struct {
 	Success bool
 	HostList []string
 }
 
-// Represents service Request
+// This RPC server will handle any requests made by the client to the server.
+// The server will process it and add the request to the request buffer to try to find the file
+// If the file is not found within a timeout, the server will respond with an empty list.
 type ClientRequest int
 
-// Struct for the request buffer within each heartbeat
 type Request struct {
 	ID       string
 	Type     string
@@ -33,10 +33,6 @@ var REQUEST_TIMEOUT int64 = 3000
 var requestCount int = 1000
 
 func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) error {
-	// This function will look for the file in the system. If it doesnt exist,
-	// The leader will return the nodes to write to and if the user need confirmation
-	// The client will then RPC connect to the nodes and write the file the client
-	// Will handle the confirmation
 	log.Infof("Server recieved Put for file %s", requestFile)
 	success, hostList := handleClientRequest("Put", requestFile)
 

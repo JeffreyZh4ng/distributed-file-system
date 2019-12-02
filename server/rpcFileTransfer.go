@@ -10,7 +10,6 @@ import (
 var FILE_RPC_PORT string = "7000"
 var SERVER_FOLDER_NAME string = "serverFiles/"
 
-// Holds arguments to be passed to service request in RPC call
 type FileTransferRequest struct {
 	FileName string
 	FileGroup []string
@@ -24,7 +23,7 @@ type UpdateFileGroupRequest struct {
 	FileGroup []string
 }
 
-// Represents service Request
+// This RPC service will be used to transfer files
 type FileTransfer int
 
 type TransferResult []byte
@@ -47,12 +46,5 @@ func (t *FileTransfer) GetFile(request FileTransferRequest, data *TransferResult
 	*data = fileContents
 	log.Infof("Sending file %s to client!", request.FileName)
  
-	return nil
-}
-
-func (t *FileTransfer) UpdateFileGroup(request UpdateFileGroupRequest, _ *TransferResult) error {
-	LocalFiles.Files[request.FileName] = request.FileGroup
-	LocalFiles.UpdateTimes[request.FileName] = time.Now().UnixNano() / int64(time.Millisecond)
-
 	return nil
 }
