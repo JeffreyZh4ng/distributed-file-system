@@ -13,6 +13,7 @@ import (
 )
 
 var NUM_REPLICAS int = 4
+var FILE_RESHARD_TIMEOUT int64 = 6000
 
 // Local datastore that keeps track of the other nodes that have the same files
 type LocalFileSystem struct {
@@ -170,21 +171,15 @@ func fileFoundRPC(request *Request) {
 
 // This will find all the files that need to be resharded to another node
 func findFailedNodes() {
-
-	// Populate a map to make alive node lookup easier
-	aliveNodes := map[string]int{}
-	for _, host := range Membership.List {
-		aliveNodes[host] = 0
-	}
-
-	// Loop through every node in every file stored in the local system
 	hostname, _ := os.Hostname()
 	for fileName, fileGroup := range LocalFiles.Files {
 
+		currTime := time.Now().UnixNano() / int64(time.Millisecond)
 		fileGroupAliveNodes := []string{}
 		for _, node := range fileGroup {
 
-			if _, contains := aliveNodes[node]; contains {
+			// We want a longer time out than failure detection to duplicate a file
+			if currTime-Membership.Data[node] < FILE_RESHARD_TIMEOUT {
 				fileGroupAliveNodes = append(fileGroupAliveNodes, node)
 			}
 		}
@@ -247,7 +242,7 @@ func reshardFiles(fileName string, fileGroupAliveNodes []string) {
 		Data: loadedFile,
 	}
 	for _, node := range newGroupMembers {
-		log.Infof("Sending file %s to server %s", fileName, node)
+		log.Infof("Resharding file %s to server %s", fileName, node)
 		fileTransferRPC(node, fileTransferArgs)
 	}
 }
