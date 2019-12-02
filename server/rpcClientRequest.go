@@ -36,8 +36,14 @@ func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) er
 	log.Infof("Server recieved Put for file %s", requestFile)
 	success, hostList := handleClientRequest("Put", requestFile)
 
-	// We can change this to indicate if it was within the grace period
-	response.Success = success
+	// If the last update time was less than 30 seconds ago, prompt user
+	response.Success = false
+    if success {
+        currTime := time.Now().UnixNano() / int64(time.Millisecond)
+        if currTime-LocalFiles.UpdateTimes[requestFile] > 30000 {
+            response.Success = true
+        }
+    }
 
 	// If the file was not found, pick four random nodes to shard the file to
 	if !success {
@@ -56,7 +62,7 @@ func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) er
 					break
 				}
 			}
-			
+
 			if duplicate {
 				continue
 			}
@@ -68,8 +74,8 @@ func (t *ClientRequest) Put(requestFile string, response *ClientResponseArgs) er
 				return nil
 			}
 		}
-	} 
-	
+	}
+
 	response.HostList = hostList
 	return nil
 }
@@ -122,7 +128,7 @@ func handleClientRequest(requestType string, requestFile string) (success bool, 
 	// Indicating that that node has the file
 	startTime := time.Now().UnixNano() / int64(time.Millisecond)
 	ticker := time.NewTicker(500 * time.Millisecond)
-	
+
 	for {
 		<-ticker.C
 

@@ -2,10 +2,12 @@ package client
 
 import (
 	log "github.com/sirupsen/logrus"
-	"cs-425-mp3/server"
+    "bufio"
+    "cs-425-mp3/server"
 	"io/ioutil"
 	"math/rand"
 	"net/rpc"
+    "os"
 	"strconv"
 	"time"
 )
@@ -27,7 +29,7 @@ func initClientRequest(requestType string, fileName string) (*server.ClientRespo
 			log.Infof("Connected to server %s and recieved a response", connectName)
 			return response
 		}
-	} 
+	}
 
 	log.Fatal("Could not connect to any server!")
 	return nil
@@ -60,22 +62,39 @@ func makeFileTransferRequest(hostname string, requestType string, request *serve
 		return nil
 	}
 	defer client.Close()
-		
+
 	var response server.TransferResult
 	err = client.Call(requestType, &request, &response)
 	if err != nil {
 		log.Fatalf("error in Request", err)
 		return nil
 	}
-		
+
 	return response
 }
 
 func ClientPut(args []string) {
 	fileName := args[1]
 	response := initClientRequest("ClientRequest.Put", fileName)
-	log.Infof("Putting file to %s", response.HostList)
 
+    if response.Success {
+        log.Infof("The file was modified less than 30 seconds ago, do you want to continue uploading this file?")
+		log.Infof("Enter Y/N")
+        reader := bufio.NewReader(os.Stdin)
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSuffix(input, "\n")
+
+        switch input {
+        case "Y":
+            break
+        case "N":
+            os.Exit(0)
+        default:
+            log.Infof("Command not recognized")
+            os.Exit(0)
+    }
+
+	log.Infof("Putting file to %s", response.HostList)
 	filePath := CLIENT_FOLDER_NAME + args[0]
 	fileContents, _ := ioutil.ReadFile(filePath)
 
