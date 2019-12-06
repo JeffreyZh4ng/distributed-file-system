@@ -1,13 +1,13 @@
 package client
 
 import (
+	"bufio"
+	"cs-425-mp3/server"
 	log "github.com/sirupsen/logrus"
-    "bufio"
-    "cs-425-mp3/server"
 	"io/ioutil"
 	"math/rand"
 	"net/rpc"
-    "os"
+	"os"
 	"strconv"
 	"time"
 )
@@ -15,7 +15,7 @@ import (
 var CLIENT_FOLDER_NAME string = "clientFiles/"
 
 // Function that will try to dial the lowest number server possible
-func initClientRequest(requestType string, fileName string) (*server.ClientResponseArgs) {
+func initClientRequest(requestType string, fileName string) *server.ClientResponseArgs {
 	for i := 1; i <= 10; i++ {
 		numStr := strconv.Itoa(i)
 		if len(numStr) == 1 {
@@ -36,9 +36,9 @@ func initClientRequest(requestType string, fileName string) (*server.ClientRespo
 }
 
 // Function that dials a specific server
-func makeClientRequest(hostname string, requestType string, fileName string) (*server.ClientResponseArgs) {
-	log.Infof("Making client request to %s", hostname + ":" + server.CLIENT_RPC_PORT)
-	client, err := rpc.DialHTTP("tcp", hostname + ":" + server.CLIENT_RPC_PORT)
+func makeClientRequest(hostname string, requestType string, fileName string) *server.ClientResponseArgs {
+	log.Infof("Making client request to %s", hostname+":"+server.CLIENT_RPC_PORT)
+	client, err := rpc.DialHTTP("tcp", hostname+":"+server.CLIENT_RPC_PORT)
 	if err != nil {
 		return nil
 	}
@@ -55,9 +55,9 @@ func makeClientRequest(hostname string, requestType string, fileName string) (*s
 }
 
 // Function that will dial a server to request or send a file
-func makeFileTransferRequest(hostname string, requestType string, request *server.FileTransferRequest) ([]byte) {
-	log.Infof("Making transfer request to %s", hostname + ":" + server.CLIENT_RPC_PORT)
-	client, err := rpc.DialHTTP("tcp", hostname + ":" + server.FILE_RPC_PORT)
+func makeFileTransferRequest(hostname string, requestType string, request *server.FileTransferRequest) []byte {
+	log.Infof("Making transfer request to %s", hostname+":"+server.CLIENT_RPC_PORT)
+	client, err := rpc.DialHTTP("tcp", hostname+":"+server.FILE_RPC_PORT)
 	if err != nil {
 		return nil
 	}
@@ -77,31 +77,32 @@ func ClientPut(args []string) {
 	fileName := args[1]
 	response := initClientRequest("ClientRequest.Put", fileName)
 
-    if response.Success {
-        log.Infof("The file was modified less than 30 seconds ago, do you want to continue uploading this file?")
+	if response.Success {
+		log.Infof("The file was modified less than 30 seconds ago, do you want to continue uploading this file?")
 		log.Infof("Enter Y/N")
-        reader := bufio.NewReader(os.Stdin)
+		reader := bufio.NewReader(os.Stdin)
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSuffix(input, "\n")
 
-        switch input {
-        case "Y":
-            break
-        case "N":
-            os.Exit(0)
-        default:
-            log.Infof("Command not recognized")
-            os.Exit(0)
-    }
+		switch input {
+		case "Y":
+			break
+		case "N":
+			os.Exit(0)
+		default:
+			log.Infof("Command not recognized")
+			os.Exit(0)
+		}
+	}
 
 	log.Infof("Putting file to %s", response.HostList)
 	filePath := CLIENT_FOLDER_NAME + args[0]
 	fileContents, _ := ioutil.ReadFile(filePath)
 
 	request := &server.FileTransferRequest{
-		FileName: fileName,
+		FileName:  fileName,
 		FileGroup: response.HostList,
-		Data: fileContents,
+		Data:      fileContents,
 	}
 
 	for i := 0; i < len(response.HostList); i++ {
@@ -120,9 +121,9 @@ func ClientGet(args []string) {
 	rand.Seed(time.Now().UnixNano())
 	requestServer := response.HostList[rand.Intn(len(response.HostList))]
 	request := &server.FileTransferRequest{
-		FileName: fileName,
+		FileName:  fileName,
 		FileGroup: nil,
-		Data: nil,
+		Data:      nil,
 	}
 	transferResponse := makeFileTransferRequest(requestServer, "FileTransfer.GetFile", request)
 
